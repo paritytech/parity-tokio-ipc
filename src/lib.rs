@@ -1,3 +1,6 @@
+//! Tokio IPC transport. Under the hood uses Unix Domain Sockets for Linux/Mac 
+//! and Named Pipes for Windows. 
+
 extern crate futures;
 extern crate tokio_uds;
 extern crate tokio_named_pipes;
@@ -8,13 +11,14 @@ use std::io::{self, Read, Write};
 use futures::{Async, Poll};
 use futures::stream::Stream;
 use tokio_core::io::Io;
-use tokio_core::reactor::{Handle, Remote};
+use tokio_core::reactor::Handle;
 
 #[cfg(windows)]
 use tokio_named_pipes::NamedPipe;
 
+/// IPC Endpoint (UnixListener or rolling NamedPipe)
 pub struct Endpoint {
-    path: String,
+    _path: String,
     _handle: Handle,
     #[cfg(not(windows))]
     inner: tokio_uds::UnixListener,
@@ -23,45 +27,52 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
+    /// Stream of incoming connections
     #[cfg(not(windows))]
     pub fn incoming(self) -> Incoming {
         Incoming { inner: self.inner.incoming() }
     }
+
+    /// Stream of incoming connections    
     #[cfg(windows)]
     pub fn incoming(self) -> Incoming {
-        Incoming { inner: NamedPipeSupport { path: self.path, handle: self._handle.remote().clone(), pipe: self.inner } }
+        Incoming { inner: NamedPipeSupport { path: self._path, handle: self._handle.remote().clone(), pipe: self.inner } }
     }
 
+    /// Inner platform-dependant state of the endpoint
     #[cfg(windows)]
     fn inner(p: &str, handle: &Handle) -> io::Result<NamedPipe> {
         NamedPipe::new(p, handle)
     }
 
+    /// Inner platform-dependant state of the endpoint
     #[cfg(not(windows))]
     fn inner(p: &str, handle: &Handle) -> io::Result<tokio_uds::UnixListener> {
         tokio_uds::UnixListener::bind(p, handle)
     }
 
+    /// New IPC endpoint at the given path
+    /// Endpoint ready to accept connections immediately
     pub fn new(path: String, handle: &Handle) -> io::Result<Self> {
         Ok(Endpoint { 
             inner: Self::inner(&path, handle)?,
-            path: path, 
+            _path: path, 
             _handle: handle.clone(),
         })
     }
-
-    pub fn path(&self) -> &str { &self.path }
 }
 
+/// Remote connection data, if any available
 pub struct RemoteId;
 
 #[cfg(windows)]
 struct NamedPipeSupport {
     path: String,
-    handle: Remote,
+    handle: tokio_core::reactor::Remote,
     pipe: NamedPipe,    
 }
 
+/// Stream of incoming connections
 pub struct Incoming {
     #[cfg(not(windows))]
     inner: ::tokio_core::io::IoStream<(tokio_uds::UnixStream, std::os::unix::net::SocketAddr)>,
@@ -112,6 +123,7 @@ impl Stream for Incoming {
     }      
 }
 
+/// IPC stream of client connection
 pub struct IpcStream {
     #[cfg(windows)]
     inner: tokio_named_pipes::NamedPipe,
@@ -142,14 +154,4 @@ impl Io for IpcStream {
     fn poll_write(&mut self) -> Async<()> {
         self.inner.poll_write()
     }
-}
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn create() {
-
-    }
-
 }
