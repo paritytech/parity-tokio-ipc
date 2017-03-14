@@ -1,0 +1,10 @@
+[package]
+name = "parity-tokio-ipc"
+version = "0.1.0"
+authors = ["NikVolf <nikvolf@gmail.com>"]
+
+[dependencies]
+tokio-uds = "0.1"
+tokio-named-pipes = { git = "https://github.com/alexcrichton/tokio-named-pipes" }
+futures = "0.1"
+tokio-core = "0.1"
