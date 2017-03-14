@@ -8,7 +8,7 @@ use std::io::{self, Read, Write};
 use futures::{Async, Poll};
 use futures::stream::Stream;
 use tokio_core::io::Io;
-use tokio_core::reactor::Handle;
+use tokio_core::reactor::{Handle, Remote};
 
 #[cfg(windows)]
 use tokio_named_pipes::NamedPipe;
@@ -29,7 +29,7 @@ impl Endpoint {
     }
     #[cfg(windows)]
     pub fn incoming(self) -> Incoming {
-        Incoming { inner: NamedPipeSupport { path: self.path, handle: self._handle, pipe: self.inner } }
+        Incoming { inner: NamedPipeSupport { path: self.path, handle: self._handle.remote().clone(), pipe: self.inner } }
     }
 
     #[cfg(windows)]
@@ -58,7 +58,7 @@ pub struct RemoteId;
 #[cfg(windows)]
 struct NamedPipeSupport {
     path: String,
-    handle: Handle,
+    handle: Remote,
     pipe: NamedPipe,    
 }
 
@@ -90,7 +90,11 @@ impl Stream for Incoming {
                     IpcStream { 
                         inner: ::std::mem::replace(
                             &mut self.inner.pipe, 
-                            NamedPipe::new(&self.inner.path, &self.inner.handle)?,
+                            NamedPipe::new(&self.inner.path, 
+                                &self.inner.handle.handle().ok_or(
+                                    io::Error::new(io::ErrorKind::Other, "Cannot spawn event loop handle")
+                                )?
+                            )?,
                         ) 
                     }, 
                     RemoteId,
