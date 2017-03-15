@@ -155,3 +155,102 @@ impl Io for IpcStream {
         self.inner.poll_write()
     }
 }
+
+#[cfg(test)]
+#[cfg(windows)]
+mod tests {
+    extern crate rand;
+    extern crate tokio_line;
+
+    use std::thread;
+    use tokio_core::reactor::{Core, Handle};
+    use tokio_core::io::Io;
+    use futures::{future, Stream, Sink, Future};
+
+    use super::Endpoint;
+
+    #[cfg(windows)]
+    fn random_pipe_path() -> String {
+        let num: u64 = self::rand::Rng::gen(&mut rand::thread_rng());
+        format!(r"\\.\pipe\my-pipe-{}", num)
+    }
+
+    fn client(path: &str, handle: &Handle) -> ::tokio_named_pipes::NamedPipe {
+        extern crate mio_named_pipes;    
+        extern crate miow;
+        use std::os::windows::io::{FromRawHandle, IntoRawHandle};
+
+        let raw_handle = miow::pipe::NamedPipeBuilder::new(path)
+            .first(false)
+            .inbound(true)
+            .outbound(true)
+            .out_buffer_size(66666)
+            .in_buffer_size(66666)
+            .create()
+            .expect("Pipe builder should finish ok")
+            .into_raw_handle();
+
+        let mio = unsafe {
+            mio_named_pipes::NamedPipe::from_raw_handle(raw_handle)
+        };
+
+        ::tokio_named_pipes::NamedPipe::from_pipe(mio, handle).expect("Error creating pipe from mio pipe")
+    }    
+
+    #[test]
+    #[cfg(windows)]
+    fn win_smoky() {
+        let path = random_pipe_path(); let path2 = path.clone();
+
+        thread::spawn(move || {
+            let mut core = Core::new().unwrap();
+            let endpoint = Endpoint::new(path, &core.handle()).expect("Should be created");
+            let srv = endpoint.incoming()
+                .for_each(|(stream, _)| {
+                    println!("Created connection");                   
+                    let (writer, reader) = stream.framed(tokio_line::LineCodec).split();
+                    let responses = reader
+                        .and_then(move |request| {  
+                            println!("Handled request");
+                            let mut reply = String::new();
+                            reply.push_str("You sent: ");
+                            reply.push_str(&request);
+                            future::ok(reply)
+                        });
+
+                    writer.send_all(responses).map(|_| ())
+                })
+                .map(|_| ())
+                .map_err(|_e| ())
+                .boxed();
+
+            core.run(srv).unwrap();
+        });
+        thread::sleep(::std::time::Duration::from_millis(50));
+
+        let mut core = Core::new().unwrap();
+        let pipe = client(&path2, &core.handle());
+
+        loop {
+            if let Err(e) = pipe.connect() {
+                if e.kind() == ::std::io::ErrorKind::WouldBlock { 
+                    thread::sleep(::std::time::Duration::from_millis(20)); 
+                    continue; 
+                }
+                else { panic!("Error connecting: {}", e); }
+            }
+            break;
+        }
+        println!("Connected");
+        let (writer, reader) = pipe.framed(tokio_line::LineCodec).split();
+        let send = writer.send("Space".to_owned());
+        
+        core.run(send).unwrap();
+
+        let read = core.run(reader.take(1).collect()).unwrap();
+
+        assert_eq!(read[0], "You sent: Space".to_owned());
+    }
+
+
+}

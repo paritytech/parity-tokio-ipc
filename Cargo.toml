@@ -8,3 +8,7 @@ tokio-uds = "0.1"
 tokio-named-pipes = { git = "https://github.com/alexcrichton/tokio-named-pipes" }
 futures = "0.1"
 tokio-core = "0.1"
+tokio-line = { git = "https://github.com/tokio-rs/tokio-line" }
+rand = "*"
+mio-named-pipes = { git = "https://github.com/alexcrichton/mio-named-pipes" }
+miow = "*"
