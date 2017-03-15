@@ -120,9 +120,6 @@ impl Stream for Incoming {
 
     #[cfg(windows)]
     fn poll(&mut self) -> Poll<Option<Self::Item>, io::Error> {
-        use tokio_core::reactor::Timeout;
-        use futures::{future, Future};
-
         match self.inner.pipe.connect() {
             Ok(()) => {
                 trace!("Incoming connection polled successfully");
@@ -143,19 +140,8 @@ impl Stream for Incoming {
             },
             Err(e) => {
                 if e.kind() == io::ErrorKind::WouldBlock {
-                    trace!("Incoming connection was to block, added timeout");
-                    let task = ::futures::task::park();
-                    let handle = &self.inner.handle.handle().ok_or(
-                        io::Error::new(io::ErrorKind::Other, "Cannot spawn event loop handle")
-                    )?;
-                    handle.spawn(
-                        Timeout::new(::std::time::Duration::from_millis(100), &handle)?
-                            .then(move |_| { 
-                                task.unpark(); 
-                                trace!("Unparked connection task");
-                                future::ok(())
-                            })
-                    );
+                    trace!("Incoming connection was to block, waiting for connection to become writeable");
+                    self.inner.pipe.poll_write();
                     Ok(Async::NotReady)
                 } else {
                     Err(e)
