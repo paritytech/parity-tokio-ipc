@@ -206,8 +206,8 @@ mod tests {
                     println!("Created connection");                   
                     let (reader, writer) = stream.split();
                     let mut buf = Vec::new();
-                    io::read_to_end(reader, buf).and_then(move |(reader, buf)| io::write_all(writer, "Ok"));
-                    future::ok(())
+                    io::read_to_end(reader, buf).and_then(move |(reader, buf)| io::write_all(writer, "Ok"))
+                        .map(|_| ())
                 })
                 .map(|_| ())
                 .map_err(|_e| ())
