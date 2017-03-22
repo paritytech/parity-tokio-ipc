@@ -4,7 +4,7 @@
 extern crate futures;
 extern crate tokio_uds;
 extern crate tokio_named_pipes;
-#[macro_use] extern crate tokio_core;
+extern crate tokio_core;
 #[macro_use] extern crate log;
 
 #[cfg(windows)] 
@@ -20,7 +20,40 @@ use tokio_core::reactor::Handle;
 #[cfg(windows)]
 use tokio_named_pipes::NamedPipe;
 
-/// IPC Endpoint (UnixListener or rolling NamedPipe)
+/// For testing/examples
+pub fn dummy_endpoint() -> String {
+    extern crate rand;
+
+    let num: u64 = rand::Rng::gen(&mut rand::thread_rng());
+    if cfg!(windows) {
+        format!(r"\\.\pipe\my-pipe-{}", num)
+    } else {
+        format!(r"/tmp/my-uds-{}", num)
+    }
+}
+
+/// Endpoint for IPC transport
+///
+/// # Examples
+///
+/// ``` 
+/// extern crate tokio_core;
+/// extern crate futures;
+/// extern crate parity_tokio_ipc;
+///
+/// use parity_tokio_ipc::{Endpoint, dummy_endpoint};
+/// use tokio_core::reactor::Core;
+/// use futures::{future, Stream};
+///
+/// fn main() {
+///     let core = Core::new().unwrap();
+///     let endpoint = Endpoint::new(dummy_endpoint(), &core.handle()).unwrap();
+///     endpoint.incoming().for_each(|(stream, _)| {
+///         println!("Connection received");
+///         future::ok(())
+///     });
+/// }
+/// ```
 pub struct Endpoint {
     _path: String,
     _handle: Handle,
