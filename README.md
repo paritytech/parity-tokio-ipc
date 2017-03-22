@@ -1,5 +1,7 @@
 # parity-tokio-ipc
 
+[![Build Status](https://travis-ci.org/NikVolf/parity-tokio-ipc.svg?branch=master)](https://travis-ci.org/NikVolf/parity-tokio-ipc)
+
 This crate abstracts interprocess transport for UNIX/Windows. On UNIX it utilizes unix sockets (`tokio_uds` crate) and named pipe on windows (experimental `tokio-named-pipes` crate). 
 
 Endpoint is transport-agnostic interface for incoming connections:
