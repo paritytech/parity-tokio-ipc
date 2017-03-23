@@ -15,3 +15,12 @@ And IpcStream is transport-agnostic io:
   let endpoint = match Endpoint::new(endpoint_addr, handle).unwrap();
   endpoint.for_each(|(ipc_stream: IpcStream, _)| io::write_all(ipc_stream, b"Hello!"));
 ```
+
+
+# License
+
+`parity-tokio-ipc` is primarily distributed under the terms of both the MIT
+license and the Apache License (Version 2.0), with portions covered by various
+BSD-like licenses.
+
+See LICENSE-APACHE, and LICENSE-MIT for details.
