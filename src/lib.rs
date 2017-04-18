@@ -217,6 +217,17 @@ impl Io for IpcStream {
     }
 }
 
+impl IpcStream {
+    #[allow(unused_variables)]
+    pub fn shutdown(&self, how: ::std::net::Shutdown) -> io::Result<()> {
+        if cfg!(not(windows)) {
+            self.inner.shutdown(how)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 #[cfg(windows)]
 mod tests {
