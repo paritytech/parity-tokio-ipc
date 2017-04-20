@@ -1,6 +1,6 @@
 [package]
 name = "parity-tokio-ipc"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["NikVolf <nikvolf@gmail.com>"]
 
 [dependencies]
