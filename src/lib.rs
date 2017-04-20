@@ -5,6 +5,8 @@ extern crate futures;
 extern crate tokio_uds;
 extern crate tokio_named_pipes;
 extern crate tokio_core;
+extern crate tokio_io;
+extern crate bytes;
 #[macro_use] extern crate log;
 
 #[cfg(windows)] 
@@ -14,8 +16,10 @@ use std::io::{self, Read, Write};
 
 use futures::{Async, Poll};
 use futures::stream::Stream;
-use tokio_core::io::Io;
+#[allow(deprecated)] use tokio_core::io::Io;
+use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_core::reactor::Handle;
+use bytes::{BufMut, Buf};
 
 #[cfg(windows)]
 use tokio_named_pipes::NamedPipe;
@@ -207,6 +211,7 @@ impl Write for IpcStream {
     }
 }
 
+#[allow(deprecated)]
 impl Io for IpcStream {
     fn poll_read(&mut self) -> Async<()> {
         self.inner.poll_read()
@@ -217,14 +222,23 @@ impl Io for IpcStream {
     }
 }
 
-impl IpcStream {
-    #[allow(unused_variables)]
-    pub fn shutdown(&self, how: ::std::net::Shutdown) -> io::Result<()> {
-        if cfg!(not(windows)) {
-            self.inner.shutdown(how)
-        } else {
-            Ok(())
-        }
+impl AsyncRead for IpcStream {
+    unsafe fn prepare_uninitialized_buffer(&self, b: &mut [u8]) -> bool {
+        self.inner.prepare_uninitialized_buffer(b)
+    }
+
+    fn read_buf<B: BufMut>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
+        self.inner.read_buf(buf)
+    }
+}
+
+impl AsyncWrite for IpcStream {
+    fn shutdown(&mut self) -> Poll<(), io::Error> {
+        self.inner.shutdown()
+    }
+
+    fn write_buf<B: Buf>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
+        self.inner.write_buf(buf)
     }
 }
 
@@ -232,7 +246,6 @@ impl IpcStream {
 #[cfg(windows)]
 mod tests {
     extern crate rand;
-    extern crate tokio_line;
 
     use std::thread;
     use tokio_core::reactor::Core;
