@@ -7,7 +7,7 @@ extern crate tokio_named_pipes;
 extern crate tokio_core;
 extern crate tokio_io;
 extern crate bytes;
-#[macro_use] extern crate log;
+#[allow(unused_imports)] #[macro_use] extern crate log;
 
 #[cfg(windows)] 
 extern crate miow;
@@ -116,6 +116,7 @@ struct NamedPipeSupport {
 /// Stream of incoming connections
 pub struct Incoming {
     #[cfg(not(windows))]
+    #[allow(deprecated)]
     inner: ::tokio_core::io::IoStream<(tokio_uds::UnixStream, std::os::unix::net::SocketAddr)>,
     #[cfg(windows)]
     inner: NamedPipeSupport,
@@ -234,7 +235,7 @@ impl AsyncRead for IpcStream {
 
 impl AsyncWrite for IpcStream {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
-        self.inner.shutdown()
+        AsyncWrite::shutdown(&mut self.inner)
     }
 
     fn write_buf<B: Buf>(&mut self, buf: &mut B) -> Poll<usize, io::Error> {
