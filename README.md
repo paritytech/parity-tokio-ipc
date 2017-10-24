@@ -6,13 +6,13 @@ This crate abstracts interprocess transport for UNIX/Windows. On UNIX it utilize
 
 Endpoint is transport-agnostic interface for incoming connections:
 ```rust
-  let endpoint = match Endpoint::new(endpoint_addr, handle).unwrap();
+  let endpoint = Endpoint::new(endpoint_addr, handle).unwrap();
   endpoint.for_each(|_| println!("Connection received!"));
 ```
 
 And IpcStream is transport-agnostic io:
 ```rust
-  let endpoint = match Endpoint::new(endpoint_addr, handle).unwrap();
+  let endpoint = Endpoint::new(endpoint_addr, handle).unwrap();
   endpoint.for_each(|(ipc_stream: IpcStream, _)| io::write_all(ipc_stream, b"Hello!"));
 ```
 
