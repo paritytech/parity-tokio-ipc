@@ -214,7 +214,19 @@ impl IpcStream {
 
     #[cfg(windows)]
     fn connect_inner(path: &Path, handle: &Handle) -> io::Result<NamedPipe> {
-         NamedPipe::new(&path, &handle)
+        use std::fs::OpenOptions;
+        use std::os::windows::fs::OpenOptionsExt;
+        use std::os::windows::io::{FromRawHandle, IntoRawHandle};
+        use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
+        miow::pipe::NamedPipe::wait(path, None)?;
+        let mut options = OpenOptions::new();
+        options.read(true)
+            .write(true)
+            .custom_flags(FILE_FLAG_OVERLAPPED);
+        let file = options.open(path)?;
+        let mio_pipe = unsafe {  mio_named_pipes::NamedPipe::from_raw_handle(file.into_raw_handle())  };
+        let pipe = NamedPipe::from_pipe(mio_pipe, &handle)?;
+        Ok(pipe)
     }
 }
 
