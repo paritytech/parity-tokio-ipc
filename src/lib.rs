@@ -5,12 +5,17 @@ extern crate futures;
 extern crate tokio_uds;
 extern crate tokio_named_pipes;
 extern crate tokio_core;
+
 extern crate tokio_io;
 extern crate bytes;
 #[allow(unused_imports)] #[macro_use] extern crate log;
 
 #[cfg(windows)]
 extern crate miow;
+#[cfg(windows)]
+extern crate mio_named_pipes;
+#[cfg(windows)]
+extern crate winapi;
 
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -145,13 +150,13 @@ fn replacement_pipe(path: &str, handle: &Handle) -> io::Result<NamedPipe> {
 }
 
 impl Stream for Incoming {
-    type Item = (IpcStream, RemoteId);
+    type Item = (IpcConnection, RemoteId);
     type Error = io::Error;
 
     #[cfg(not(windows))]
     fn poll(&mut self) -> Poll<Option<Self::Item>, io::Error> {
         self.inner.poll().map(|poll| match poll {
-            Async::Ready(Some(val)) => Async::Ready(Some((IpcStream { inner: val.0 }, RemoteId))),
+            Async::Ready(Some(val)) => Async::Ready(Some((IpcConnection { inner: val.0 }, RemoteId))),
             Async::Ready(None) => Async::Ready(None),
             Async::NotReady => Async::NotReady,
         })
@@ -167,7 +172,7 @@ impl Stream for Incoming {
                 )?;
                 Ok(Async::Ready(Some((
                     (
-                        IpcStream { 
+                        IpcConnection { 
                             inner: ::std::mem::replace(
                                 &mut self.inner.pipe, 
                                 replacement_pipe(&self.inner.path, &handle)?,
@@ -190,19 +195,21 @@ impl Stream for Incoming {
     }      
 }
 
-/// IPC stream of client connection
-pub struct IpcStream {
+/// IPC Connection
+pub struct IpcConnection {
     #[cfg(windows)]
     inner: tokio_named_pipes::NamedPipe,
     #[cfg(not(windows))]
     inner: tokio_uds::UnixStream,
 }
 
+#[deprecated(since="0.1.5", note = "Please use `IpcConnection` instead")]
+pub type IpcStream = IpcConnection;
 
-impl IpcStream {
-    pub fn connect<P: AsRef<Path>>(path: P, handle: &Handle) -> io::Result<IpcStream> {
 
-        Ok(IpcStream{
+impl IpcConnection {
+    pub fn connect<P: AsRef<Path>>(path: P, handle: &Handle) -> io::Result<IpcConnection> {
+        Ok(IpcConnection{
             inner: Self::connect_inner(path.as_ref(), handle)?,
         })
     }
@@ -230,13 +237,13 @@ impl IpcStream {
     }
 }
 
-impl Read for IpcStream {
+impl Read for IpcConnection {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.read(buf)
     } 
 }
 
-impl Write for IpcStream {
+impl Write for IpcConnection {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.inner.write(buf)
     }
@@ -246,7 +253,7 @@ impl Write for IpcStream {
 }
 
 #[allow(deprecated)]
-impl Io for IpcStream {
+impl Io for IpcConnection {
     fn poll_read(&mut self) -> Async<()> {
         self.inner.poll_read()
     }
@@ -256,7 +263,7 @@ impl Io for IpcStream {
     }
 }
 
-impl AsyncRead for IpcStream {
+impl AsyncRead for IpcConnection {
     unsafe fn prepare_uninitialized_buffer(&self, b: &mut [u8]) -> bool {
         self.inner.prepare_uninitialized_buffer(b)
     }
@@ -266,7 +273,7 @@ impl AsyncRead for IpcStream {
     }
 }
 
-impl AsyncWrite for IpcStream {
+impl AsyncWrite for IpcConnection {
     fn shutdown(&mut self) -> Poll<(), io::Error> {
         AsyncWrite::shutdown(&mut self.inner)
     }
@@ -285,7 +292,7 @@ mod tests {
     use futures::{Stream, Future};
 
     use super::Endpoint;
-    use super::IpcStream;
+    use super::IpcConnection;
 
     #[cfg(not(windows))]
     fn random_pipe_path() -> String {
@@ -320,7 +327,7 @@ mod tests {
             .map_err(|_| ())
                 ;
         handle.spawn(srv);
-        let client = IpcStream::connect(&path, &handle).expect("failed to open a client");
+        let client = IpcConnection::connect(&path, &handle).expect("failed to open a client");
         let msg = b"hello";
         let mut rx_buf = vec![0u8; msg.len()];
         let client_fut = io::write_all(client, &msg).and_then(|(client, _)| {
