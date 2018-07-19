@@ -171,7 +171,6 @@ impl Stream for Incoming {
                     io::Error::new(io::ErrorKind::Other, "Cannot spawn event loop handle")
                 )?;
                 Ok(Async::Ready(Some((
-                    (
                         IpcConnection { 
                             inner: ::std::mem::replace(
                                 &mut self.inner.pipe, 
@@ -179,7 +178,6 @@ impl Stream for Incoming {
                             ) 
                         }, 
                         RemoteId,
-                    )
                 ))))
             },
             Err(e) => {
