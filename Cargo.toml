@@ -14,3 +14,6 @@ mio-named-pipes = { git = "https://github.com/alexcrichton/mio-named-pipes" }
 miow = "0.2"
 log = "*"
 bytes = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winbase"] }
