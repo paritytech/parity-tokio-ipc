@@ -351,6 +351,7 @@ mod tests {
         let other_client_fut = io::write_all(other_client, &msg).and_then(|(client, _)| {
             io::read_exact(client, &mut rx_buf2).map(|(_, buf)| buf)
         });
+
         let (rx_msg, other_rx_msg) = core.run(client_fut.join(other_client_fut)).expect("failed to read from server");
         assert_eq!(rx_msg,  msg);
         assert_eq!(other_rx_msg,  msg);
