@@ -31,9 +31,10 @@ use bytes::{BufMut, Buf};
 use tokio_named_pipes::NamedPipe;
 
 #[cfg(windows)]
-use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
+mod win_permissions;
 #[cfg(windows)]
-use std::ptr;
+pub use win_permissions::SecurityAttributes;
+
 
 
 /// For testing/examples
@@ -75,7 +76,7 @@ pub fn dummy_endpoint() -> String {
 pub struct Endpoint {
     path: String,
     #[cfg(windows)]
-    security_attributes: SecurityAttrWrap,
+    security_attributes: SecurityAttributes,
 }
 
 impl Endpoint {
@@ -89,16 +90,16 @@ impl Endpoint {
 
     /// Stream of incoming connections    
     #[cfg(windows)]
-    pub fn incoming(self, handle: Handle) -> io::Result<Incoming> {
+    pub fn incoming(mut self, handle: Handle) -> io::Result<Incoming> {
         let pipe = self.inner(&handle)?;
         Ok(
-            Incoming { inner: NamedPipeSupport { path: self.path, handle: handle.remote().clone(), pipe: pipe, security_attributes: self.security_attributes.0} }
+            Incoming { inner: NamedPipeSupport { path: self.path, handle: handle.remote().clone(), pipe: pipe, security_attributes: self.security_attributes} }
           )
     }
 
     /// Inner platform-dependant state of the endpoint
     #[cfg(windows)]
-    fn inner(&self, handle: &Handle) -> io::Result<NamedPipe> {
+    fn inner(&mut self, handle: &Handle) -> io::Result<NamedPipe> {
         extern crate mio_named_pipes;
         use std::os::windows::io::*;
         use miow::pipe::NamedPipeBuilder;
@@ -109,7 +110,7 @@ impl Endpoint {
             .outbound(true)
             .out_buffer_size(65536)
             .in_buffer_size(65536)
-            .with_security_attributes(self.security_attributes.0)?
+            .with_security_attributes(self.security_attributes.as_ptr())?
             .into_raw_handle()};
 
         let mio_pipe = unsafe { mio_named_pipes::NamedPipe::from_raw_handle(raw_handle) };
@@ -122,12 +123,9 @@ impl Endpoint {
         tokio_uds::UnixListener::bind(&self.path, handle)
     }
 
-    /// Sets the security attributes of the underlying named pipes. Note that if the pointer to the
-    /// security attributes is not null, it should be valid for the lifetime of this struct and the
-    /// lifetime of the returned `Incoming` struct.
     #[cfg(windows)]
-    pub unsafe fn set_security_attributes(&mut self, security_attributes: *mut SECURITY_ATTRIBUTES) {
-        self.security_attributes = SecurityAttrWrap(security_attributes);
+    pub fn set_security_attributes(&mut self, security_attributes: SecurityAttributes) {
+        self.security_attributes = security_attributes;
     }
 
     /// Returns the path of the endpoint.
@@ -141,16 +139,10 @@ impl Endpoint {
         Endpoint {
             path: path,
             #[cfg(windows)]
-            security_attributes: SecurityAttrWrap(ptr::null_mut()),
+            security_attributes: SecurityAttributes::empty(),
         }
     }
 }
-
-// This is required as otherwise the pointer to the SECURITY_ATTRIBUTES does not implement Send
-#[cfg(windows)]
-struct SecurityAttrWrap ( *mut SECURITY_ATTRIBUTES );
-#[cfg(windows)]
-unsafe impl Send for SecurityAttrWrap{}
 
 /// Remote connection data, if any available
 pub struct RemoteId;
@@ -160,7 +152,7 @@ struct NamedPipeSupport {
     path: String,
     handle: tokio_core::reactor::Remote,
     pipe: NamedPipe,
-    security_attributes: *mut SECURITY_ATTRIBUTES,
+    security_attributes: SecurityAttributes,
 }
 
 #[cfg(windows)]
@@ -182,7 +174,7 @@ impl NamedPipeSupport {
             .outbound(true)
             .out_buffer_size(65536)
             .in_buffer_size(65536)
-            .with_security_attributes(self.security_attributes)?
+            .with_security_attributes(self.security_attributes.as_ptr())?
             .into_raw_handle()};
 
         let mio_pipe = unsafe { mio_named_pipes::NamedPipe::from_raw_handle(raw_handle) };
@@ -341,6 +333,8 @@ mod tests {
 
     use super::Endpoint;
     use super::IpcConnection;
+    #[cfg(windows)]
+    use super::SecurityAttributes;
 
     #[cfg(not(windows))]
     fn random_pipe_path() -> String {
@@ -403,5 +397,29 @@ mod tests {
         let (rx_msg, other_rx_msg) = core.run(client_fut.join(other_client_fut)).expect("failed to read from server");
         assert_eq!(rx_msg,  msg);
         assert_eq!(other_rx_msg,  msg);
+    }
+
+    #[cfg(windows)]
+    fn create_pipe_with_permissions(attr: SecurityAttributes) -> ::std::io::Result<()> {
+        let mut core = Core::new().expect("Failed to spawn an event loop");
+        let path = random_pipe_path();
+
+        let mut endpoint = Endpoint::new(path);
+        endpoint.set_security_attributes(attr);
+        endpoint.incoming(core.handle()).map(|_| ())
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_pipe_permissions() {
+        create_pipe_with_permissions(SecurityAttributes::empty()).expect("failed with no attributes");
+        create_pipe_with_permissions(SecurityAttributes::allow_everyone_create().unwrap())
+            .expect("failed with attributes for creating");
+        // create_pipe_with_permissions(SecurityAttributes::allow_everyone_create().unwrap())
+        //     .expect("failed with attributes for creating");
+        // create_pipe_with_permissions(SecurityAttributes::allow_everyone_connect().unwrap())
+        //     .expect("failed with attributes for connecting");
+        // create_pipe_with_permissions(SecurityAttributes::allow_everyone_connect().unwrap())
+        //     .expect("failed with attributes for connecting");
     }
 }
