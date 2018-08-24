@@ -32,8 +32,15 @@ use tokio_named_pipes::NamedPipe;
 
 #[cfg(windows)]
 mod win_permissions;
+
 #[cfg(windows)]
 pub use win_permissions::SecurityAttributes;
+
+#[cfg(unix)]
+mod unix_permissions;
+#[cfg(unix)]
+pub use unix_permissions::SecurityAttributes;
+
 
 
 
@@ -75,7 +82,6 @@ pub fn dummy_endpoint() -> String {
 /// ```
 pub struct Endpoint {
     path: String,
-    #[cfg(windows)]
     security_attributes: SecurityAttributes,
 }
 
@@ -123,7 +129,6 @@ impl Endpoint {
         tokio_uds::UnixListener::bind(&self.path, handle)
     }
 
-    #[cfg(windows)]
     pub fn set_security_attributes(&mut self, security_attributes: SecurityAttributes) {
         self.security_attributes = security_attributes;
     }
@@ -138,7 +143,6 @@ impl Endpoint {
     pub fn new(path: String) -> Self {
         Endpoint {
             path: path,
-            #[cfg(windows)]
             security_attributes: SecurityAttributes::empty(),
         }
     }
