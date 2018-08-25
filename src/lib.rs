@@ -416,11 +416,7 @@ mod tests {
         create_pipe_with_permissions(SecurityAttributes::empty()).expect("failed with no attributes");
         create_pipe_with_permissions(SecurityAttributes::allow_everyone_create().unwrap())
             .expect("failed with attributes for creating");
-        // create_pipe_with_permissions(SecurityAttributes::allow_everyone_create().unwrap())
-        //     .expect("failed with attributes for creating");
-        // create_pipe_with_permissions(SecurityAttributes::allow_everyone_connect().unwrap())
-        //     .expect("failed with attributes for connecting");
-        // create_pipe_with_permissions(SecurityAttributes::allow_everyone_connect().unwrap())
-        //     .expect("failed with attributes for connecting");
+        create_pipe_with_permissions(SecurityAttributes::allow_everyone_connect().unwrap())
+            .expect("failed with attributes for connecting");
     }
 }

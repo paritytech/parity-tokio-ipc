@@ -237,10 +237,7 @@ impl InnerAttributes {
         let mut entries = vec![everyone_ace];
         attributes.acl = Acl::new(&mut entries)?;
         attributes.descriptor.set_dacl(&attributes.acl)?;
-        // acl.acl_ptr = ptr::null_mut();
 
-
-        println!("ayy lmao");
         Ok(attributes)
     }
 
