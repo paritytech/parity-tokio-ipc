@@ -41,9 +41,6 @@ mod unix_permissions;
 #[cfg(unix)]
 pub use unix_permissions::SecurityAttributes;
 
-
-
-
 /// For testing/examples
 pub fn dummy_endpoint() -> String {
     extern crate rand;
