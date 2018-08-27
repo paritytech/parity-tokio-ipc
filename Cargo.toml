@@ -11,9 +11,9 @@ tokio-core = "0.1"
 tokio-io = "0.1"
 rand = "0.3"
 mio-named-pipes = { git = "https://github.com/alexcrichton/mio-named-pipes" }
-miow = "0.2"
+miow = "0.3.2"
 log = "*"
 bytes = "0.4"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["winbase"] }
+winapi = { version = "0.3", features = ["winbase", "winnt", "accctrl", "aclapi", "securitybaseapi", "minwinbase", "winbase"] }
