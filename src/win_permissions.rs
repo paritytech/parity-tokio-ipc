@@ -11,26 +11,31 @@ use std::io;
 use std::mem;
 use std::marker;
 
+/// Security attributes.
 pub struct SecurityAttributes {
     attributes: Option<InnerAttributes>,
 }
 
 impl SecurityAttributes {
+    /// New default security attributes.
     pub fn empty() -> SecurityAttributes {
         SecurityAttributes { attributes: None }
     }
 
+    /// New default security attributes that allow everyone to connect.
     pub fn allow_everyone_connect() -> io::Result<SecurityAttributes> {
         let attributes = Some(InnerAttributes::allow_everyone(GENERIC_READ | FILE_WRITE_DATA)?);
         Ok(SecurityAttributes { attributes })
     }
 
+    /// New default security attributes that allow everyone to create.
     pub fn allow_everyone_create() -> io::Result<SecurityAttributes> {
         let attributes = Some(InnerAttributes::allow_everyone(GENERIC_READ | GENERIC_WRITE)?);
         Ok(SecurityAttributes { attributes })
     }
 
-    pub unsafe fn as_ptr(&mut self) -> PSECURITY_ATTRIBUTES {
+    /// Return raw handle of security attributes.
+    pub(crate) unsafe fn as_ptr(&mut self) -> PSECURITY_ATTRIBUTES {
         match self.attributes.as_mut() {
             Some(attributes) => attributes.as_ptr(),
             None => ptr::null_mut(),
