@@ -35,7 +35,7 @@ impl SecurityAttributes {
     }
 
     /// Return raw handle of security attributes.
-    pub unsafe fn as_ptr(&mut self) -> PSECURITY_ATTRIBUTES {
+    pub(crate) unsafe fn as_ptr(&mut self) -> PSECURITY_ATTRIBUTES {
         match self.attributes.as_mut() {
             Some(attributes) => attributes.as_ptr(),
             None => ptr::null_mut(),
