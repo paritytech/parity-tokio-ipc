@@ -5,7 +5,7 @@ authors = ["NikVolf <nikvolf@gmail.com>"]
 
 [dependencies]
 tokio-uds = "0.1"
-tokio-named-pipes = { git = "https://github.com/nikvolf/tokio-named-pipes" }
+tokio-named-pipes = { git = "https://github.com/nikvolf/tokio-named-pipes", branch = "stable" }
 futures = "0.1"
 tokio-core = "0.1"
 tokio-io = "0.1"
