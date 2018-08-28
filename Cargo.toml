@@ -10,7 +10,7 @@ futures = "0.1"
 tokio = "0.1"
 rand = "0.3"
 mio-named-pipes = { git = "https://github.com/alexcrichton/mio-named-pipes" }
-miow = "0.3.2"
+miow = "~0.3.2"
 log = "*"
 bytes = "0.4"
 

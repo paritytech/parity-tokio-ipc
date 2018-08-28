@@ -251,7 +251,8 @@ impl IpcConnection {
         use std::os::windows::io::{FromRawHandle, IntoRawHandle};
         use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
 
-        miow::pipe::NamedPipe::wait(path, None)?;
+        // Wait for the pipe to become available and fail after 3 seconds.
+        miow::pipe::NamedPipe::wait(path, Some(std::time::Duration::from_millis(3000)))?;
         let mut options = OpenOptions::new();
         options.read(true)
             .write(true)
