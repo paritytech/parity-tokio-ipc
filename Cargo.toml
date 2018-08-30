@@ -4,14 +4,13 @@ version = "0.1.5"
 authors = ["NikVolf <nikvolf@gmail.com>"]
 
 [dependencies]
-tokio-uds = "0.1"
+tokio-uds = "0.2"
 tokio-named-pipes = { git = "https://github.com/nikvolf/tokio-named-pipes", branch = "stable" }
 futures = "0.1"
-tokio-core = "0.1"
-tokio-io = "0.1"
+tokio = "0.1"
 rand = "0.3"
 mio-named-pipes = { git = "https://github.com/alexcrichton/mio-named-pipes" }
-miow = "0.3.2"
+miow = "~0.3.2"
 log = "*"
 bytes = "0.4"
 

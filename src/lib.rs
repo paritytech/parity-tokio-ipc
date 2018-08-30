@@ -1,12 +1,11 @@
-//! Tokio IPC transport. Under the hood uses Unix Domain Sockets for Linux/Mac 
-//! and Named Pipes for Windows. 
+//! Tokio IPC transport. Under the hood uses Unix Domain Sockets for Linux/Mac
+//! and Named Pipes for Windows.
 
 extern crate futures;
 extern crate tokio_uds;
 extern crate tokio_named_pipes;
-extern crate tokio_core;
+extern crate tokio;
 
-extern crate tokio_io;
 extern crate bytes;
 #[allow(unused_imports)] #[macro_use] extern crate log;
 
@@ -20,11 +19,9 @@ extern crate winapi;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-use futures::{Async, Poll};
-use futures::stream::Stream;
-#[allow(deprecated)] use tokio_core::io::Io;
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_core::reactor::Handle;
+use futures::{stream::Stream, Async, Poll};
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::reactor::Handle;
 use bytes::{BufMut, Buf};
 
 #[cfg(windows)]
@@ -40,6 +37,9 @@ pub use win_permissions::SecurityAttributes;
 mod unix_permissions;
 #[cfg(unix)]
 pub use unix_permissions::SecurityAttributes;
+
+#[cfg(windows)]
+const PIPE_AVAILABILITY_TIMEOUT: u64 = 5000;
 
 /// For testing/examples
 pub fn dummy_endpoint() -> String {
@@ -57,24 +57,27 @@ pub fn dummy_endpoint() -> String {
 ///
 /// # Examples
 ///
-/// ``` 
-/// extern crate tokio_core;
+/// ```
+/// extern crate tokio;
 /// extern crate futures;
 /// extern crate parity_tokio_ipc;
 ///
 /// use parity_tokio_ipc::{Endpoint, dummy_endpoint};
-/// use tokio_core::reactor::Core;
-/// use futures::{future, Stream};
+/// use futures::{future, Future, Stream};
 ///
 /// fn main() {
-///     let core = Core::new().unwrap();
+///     let runtime = tokio::runtime::Runtime::new()
+///         .expect("Error creating tokio runtime");
+///     let handle = runtime.reactor();
 ///     let endpoint = Endpoint::new(dummy_endpoint());
-///     endpoint.incoming(core.handle())
-///         .expect("failed to open a pipe")
-///         .for_each(|(stream, _)| {
+///     let server = endpoint.incoming(handle)
+///         .expect("failed to open up a new pipe/socket")
+///         .for_each(|(_stream, _remote_id)| {
 ///             println!("Connection received");
 ///             future::ok(())
-///     });
+///         })
+///         .map_err(|err| panic!("Endpoint connection error: {:?}", err));
+///     // ... run server etc.
 /// }
 /// ```
 pub struct Endpoint {
@@ -85,18 +88,19 @@ pub struct Endpoint {
 impl Endpoint {
     /// Stream of incoming connections
     #[cfg(not(windows))]
-    pub fn incoming(self, handle: Handle) -> io::Result<Incoming> {
+    pub fn incoming(self, handle: &Handle) -> io::Result<Incoming> {
         Ok(
-            Incoming { inner: self.inner(&handle)?.incoming() }
+            Incoming { inner: self.inner(handle)?.incoming() }
           )
     }
 
-    /// Stream of incoming connections    
+    /// Stream of incoming connections
     #[cfg(windows)]
-    pub fn incoming(mut self, handle: Handle) -> io::Result<Incoming> {
-        let pipe = self.inner(&handle)?;
+    pub fn incoming(mut self, handle: &Handle) -> io::Result<Incoming> {
+        let pipe = self.inner(handle)?;
         Ok(
-            Incoming { inner: NamedPipeSupport { path: self.path, handle: handle.remote().clone(), pipe: pipe, security_attributes: self.security_attributes} }
+            Incoming { inner: NamedPipeSupport { path: self.path, handle: handle.clone(),
+                pipe: pipe, security_attributes: self.security_attributes} }
           )
     }
 
@@ -122,8 +126,8 @@ impl Endpoint {
 
     /// Inner platform-dependant state of the endpoint
     #[cfg(not(windows))]
-    fn inner(&self, handle: &Handle) -> io::Result<tokio_uds::UnixListener> {
-        tokio_uds::UnixListener::bind(&self.path, handle)
+    fn inner(&self, _handle: &Handle) -> io::Result<tokio_uds::UnixListener> {
+        tokio_uds::UnixListener::bind(&self.path)
     }
 
     pub fn set_security_attributes(&mut self, security_attributes: SecurityAttributes) {
@@ -134,7 +138,6 @@ impl Endpoint {
     pub fn path(&self) -> &str {
         &self.path
     }
-
 
     /// New IPC endpoint at the given path
     pub fn new(path: String) -> Self {
@@ -151,7 +154,7 @@ pub struct RemoteId;
 #[cfg(windows)]
 struct NamedPipeSupport {
     path: String,
-    handle: tokio_core::reactor::Remote,
+    handle: Handle,
     pipe: NamedPipe,
     security_attributes: SecurityAttributes,
 }
@@ -164,11 +167,6 @@ impl NamedPipeSupport {
         use std::os::windows::io::*;
         use miow::pipe::NamedPipeBuilder;
 
-        let ev_handle = &self.handle.handle().ok_or(
-            io::Error::new(io::ErrorKind::Other, "Cannot spawn event loop handle")
-        )?;
-
-
         let raw_handle = unsafe { NamedPipeBuilder::new(&self.path)
             .first(false)
             .inbound(true)
@@ -179,15 +177,14 @@ impl NamedPipeSupport {
             .into_raw_handle()};
 
         let mio_pipe = unsafe { mio_named_pipes::NamedPipe::from_raw_handle(raw_handle) };
-        NamedPipe::from_pipe(mio_pipe, ev_handle)
+        NamedPipe::from_pipe(mio_pipe, &self.handle)
     }
 }
 
 /// Stream of incoming connections
 pub struct Incoming {
     #[cfg(not(windows))]
-    #[allow(deprecated)]
-    inner: ::tokio_core::io::IoStream<(tokio_uds::UnixStream, std::os::unix::net::SocketAddr)>,
+    inner: tokio_uds::Incoming,
     #[cfg(windows)]
     inner: NamedPipeSupport,
 }
@@ -199,7 +196,7 @@ impl Stream for Incoming {
     #[cfg(not(windows))]
     fn poll(&mut self) -> Poll<Option<Self::Item>, io::Error> {
         self.inner.poll().map(|poll| match poll {
-            Async::Ready(Some(val)) => Async::Ready(Some((IpcConnection { inner: val.0 }, RemoteId))),
+            Async::Ready(Some(val)) => Async::Ready(Some((IpcConnection { inner: val }, RemoteId))),
             Async::Ready(None) => Async::Ready(None),
             Async::NotReady => Async::NotReady,
         })
@@ -212,39 +209,35 @@ impl Stream for Incoming {
                 trace!("Incoming connection polled successfully");
                 let new_listener = self.inner.replacement_pipe()?;
                 Ok(Async::Ready(Some((
-                        IpcConnection { 
+                        IpcConnection {
                             inner: ::std::mem::replace(
-                                &mut self.inner.pipe, 
+                                &mut self.inner.pipe,
                                 new_listener,
-                            ) 
-                        }, 
+                            )
+                        },
                         RemoteId,
                 ))))
             },
             Err(e) => {
                 if e.kind() == io::ErrorKind::WouldBlock {
                     trace!("Incoming connection was to block, waiting for connection to become writeable");
-                    self.inner.pipe.poll_write();
+                    self.inner.pipe.poll_write_ready()?;
                     Ok(Async::NotReady)
                 } else {
                     Err(e)
                 }
             },
         }
-    }      
+    }
 }
 
 /// IPC Connection
 pub struct IpcConnection {
-    #[cfg(windows)]
-    inner: tokio_named_pipes::NamedPipe,
     #[cfg(not(windows))]
     inner: tokio_uds::UnixStream,
+    #[cfg(windows)]
+    inner: tokio_named_pipes::NamedPipe,
 }
-
-#[deprecated(since="0.1.5", note = "Please use `IpcConnection` instead")]
-pub type IpcStream = IpcConnection;
-
 
 impl IpcConnection {
     pub fn connect<P: AsRef<Path>>(path: P, handle: &Handle) -> io::Result<IpcConnection> {
@@ -254,8 +247,9 @@ impl IpcConnection {
     }
 
     #[cfg(unix)]
-    fn connect_inner(path: &Path, handle: &Handle) -> io::Result<tokio_uds::UnixStream> {
-        tokio_uds::UnixStream::connect(&path, &handle)
+    fn connect_inner(path: &Path, _handle: &Handle) -> io::Result<tokio_uds::UnixStream> {
+        use futures::Future;
+        tokio_uds::UnixStream::connect(&path).wait()
     }
 
     #[cfg(windows)]
@@ -264,14 +258,16 @@ impl IpcConnection {
         use std::os::windows::fs::OpenOptionsExt;
         use std::os::windows::io::{FromRawHandle, IntoRawHandle};
         use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
-        miow::pipe::NamedPipe::wait(path, None)?;
+
+        // Wait for the pipe to become available or fail after 5 seconds.
+        miow::pipe::NamedPipe::wait(path, Some(std::time::Duration::from_millis(PIPE_AVAILABILITY_TIMEOUT))).unwrap();
         let mut options = OpenOptions::new();
         options.read(true)
             .write(true)
             .custom_flags(FILE_FLAG_OVERLAPPED);
         let file = options.open(path)?;
-        let mio_pipe = unsafe {  mio_named_pipes::NamedPipe::from_raw_handle(file.into_raw_handle())  };
-        let pipe = NamedPipe::from_pipe(mio_pipe, &handle)?;
+        let mio_pipe = unsafe { mio_named_pipes::NamedPipe::from_raw_handle(file.into_raw_handle()) };
+        let pipe = NamedPipe::from_pipe(mio_pipe, handle)?;
         Ok(pipe)
     }
 }
@@ -279,7 +275,7 @@ impl IpcConnection {
 impl Read for IpcConnection {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.inner.read(buf)
-    } 
+    }
 }
 
 impl Write for IpcConnection {
@@ -288,17 +284,6 @@ impl Write for IpcConnection {
     }
     fn flush(&mut self) -> io::Result<()> {
         self.inner.flush()
-    }
-}
-
-#[allow(deprecated)]
-impl Io for IpcConnection {
-    fn poll_read(&mut self) -> Async<()> {
-        self.inner.poll_read()
-    }
-
-    fn poll_write(&mut self) -> Async<()> {
-        self.inner.poll_write()
     }
 }
 
@@ -326,10 +311,8 @@ impl AsyncWrite for IpcConnection {
 mod tests {
     extern crate rand;
 
-    use tokio_core::reactor::Core;
-    use tokio_core::io::{self, Io};
-    use futures::{Stream, Future};
-    use futures::sync::oneshot;
+    use tokio::{self, io::{self, AsyncRead}, runtime::TaskExecutor, reactor::Handle};
+    use futures::{sync::oneshot, Stream, Future};
     use std::thread;
 
     use super::Endpoint;
@@ -349,14 +332,12 @@ mod tests {
         format!(r"\\.\pipe\my-pipe-{}", num)
     }
 
-    fn run_server(path: &str) {
+    fn run_server(path: &str, exec: TaskExecutor, handle: Handle) {
         let path = path.to_owned();
         let (ok_signal, ok_rx) = oneshot::channel();
-        thread::spawn(|| {
-            let mut core = Core::new().expect("failed to spawn an event loop");
+        thread::spawn(move || {
             let endpoint = Endpoint::new(path);
-            let connections = endpoint.incoming(core.handle()).expect("failed to open up a new pipe/socket");
-            ok_signal.send(()).expect("failed to send ok");
+            let connections = endpoint.incoming(&handle).expect("failed to open up a new pipe/socket");
             let srv = connections.for_each(|(stream, _)| {
                     let (reader, writer) = stream.split();
                     let buf = [0u8; 5];
@@ -369,45 +350,65 @@ mod tests {
                     .map(|_| ())
                 })
                 .map_err(|_| ());
-            core.run(srv).expect("server failed");
+            exec.spawn(srv);
+            ok_signal.send(()).expect("failed to send ok");
+            println!("Server running.");
         });
         ok_rx.wait().expect("failed to receive handle")
     }
 
+    // NOTE: Intermittently fails or stalls on windows.
     #[test]
     fn smoke_test() {
-        let path = random_pipe_path();
-        run_server(&path);
-        let mut core = Core::new().expect("failed to spawn an event loop");
-        let handle = core.handle();
+        let mut runtime = tokio::runtime::Runtime::new().expect("Error creating tokio runtime");
+        let exec = runtime.executor();
+        let handle = runtime.reactor().clone();
 
-        let client = IpcConnection::connect(&path, &handle).expect("failed to open a client");
-        let other_client = IpcConnection::connect(&path, &handle).expect("failed to open a client again");
+        let path = random_pipe_path();
+
+        run_server(&path, exec, handle.clone());
+
+        println!("Connecting to client 0...");
+        let client_0 = IpcConnection::connect(&path, &handle).expect("failed to open client_0");
+        println!("Connecting to client 1...");
+        let client_1 = IpcConnection::connect(&path, &handle).expect("failed to open client_1");
         let msg = b"hello";
 
-        let mut rx_buf = vec![0u8; msg.len()];
-        let client_fut = io::write_all(client, &msg).and_then(|(client, _)| {
-            io::read_exact(client, &mut rx_buf).map(|(_, buf)| buf)
-        });
+        let rx_buf = vec![0u8; msg.len()];
+        let client_0_fut = io::write_all(client_0, msg)
+            .map_err(|err| panic!("Client 0 write error: {:?}", err))
+            .and_then(move |(client, _)| {
+                io::read_exact(client, rx_buf).map(|(_, buf)| buf)
+                    .map_err(|err| panic!("Client 0 read error: {:?}", err))
+            });
 
-        let mut rx_buf2 = vec![0u8; msg.len()];
-        let other_client_fut = io::write_all(other_client, &msg).and_then(|(client, _)| {
-            io::read_exact(client, &mut rx_buf2).map(|(_, buf)| buf)
-        });
+        let rx_buf2 = vec![0u8; msg.len()];
+        let client_1_fut = io::write_all(client_1, msg)
+            .map_err(|err| panic!("Client 1 write error: {:?}", err))
+            .and_then(move |(client, _)| {
+                io::read_exact(client, rx_buf2).map(|(_, buf)| buf)
+                    .map_err(|err| panic!("Client 1 read error: {:?}", err))
+            });
 
-        let (rx_msg, other_rx_msg) = core.run(client_fut.join(other_client_fut)).expect("failed to read from server");
-        assert_eq!(rx_msg,  msg);
-        assert_eq!(other_rx_msg,  msg);
+        let fut = client_0_fut.join(client_1_fut).and_then(move |(rx_msg, other_rx_msg)| {
+            assert_eq!(rx_msg,  msg);
+            assert_eq!(other_rx_msg,  msg);
+            Ok(())
+        }).map_err(|err| panic!("Smoke test error: {:?}", err));
+
+        runtime.block_on(fut).expect("Runtime error")
     }
 
     #[cfg(windows)]
     fn create_pipe_with_permissions(attr: SecurityAttributes) -> ::std::io::Result<()> {
-        let mut core = Core::new().expect("Failed to spawn an event loop");
+        let runtime = tokio::runtime::Runtime::new().expect("Error creating tokio runtime");
+        let handle = runtime.reactor();
+
         let path = random_pipe_path();
 
         let mut endpoint = Endpoint::new(path);
         endpoint.set_security_attributes(attr);
-        endpoint.incoming(core.handle()).map(|_| ())
+        endpoint.incoming(handle).map(|_| ())
     }
 
     #[cfg(windows)]
