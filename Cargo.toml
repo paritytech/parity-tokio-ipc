@@ -2,6 +2,13 @@
 name = "parity-tokio-ipc"
 version = "0.1.5"
 authors = ["NikVolf <nikvolf@gmail.com>"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/nikvolf/parity-tokio-ipc"
+homepage = "https://github.com/nikvolf/parity-tokio-ipc"
+description = """
+Interprocess communication library for tokio.
+"""
 
 [dependencies]
 tokio-uds = "0.2"
