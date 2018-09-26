@@ -5,11 +5,11 @@ authors = ["NikVolf <nikvolf@gmail.com>"]
 
 [dependencies]
 tokio-uds = "0.2"
-tokio-named-pipes = { git = "https://github.com/nikvolf/tokio-named-pipes", branch = "stable" }
+tokio-named-pipes = "0.1"
 futures = "0.1"
 tokio = "0.1"
 rand = "0.3"
-mio-named-pipes = { git = "https://github.com/alexcrichton/mio-named-pipes" }
+mio-named-pipes = "0.1"
 miow = "~0.3.2"
 log = "*"
 bytes = "0.4"
