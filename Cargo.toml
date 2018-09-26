@@ -2,14 +2,21 @@
 name = "parity-tokio-ipc"
 version = "0.1.5"
 authors = ["NikVolf <nikvolf@gmail.com>"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/nikvolf/parity-tokio-ipc"
+homepage = "https://github.com/nikvolf/parity-tokio-ipc"
+description = """
+Interprocess communication library for tokio.
+"""
 
 [dependencies]
 tokio-uds = "0.2"
-tokio-named-pipes = { git = "https://github.com/nikvolf/tokio-named-pipes", branch = "stable" }
+tokio-named-pipes = "0.1"
 futures = "0.1"
 tokio = "0.1"
 rand = "0.3"
-mio-named-pipes = { git = "https://github.com/alexcrichton/mio-named-pipes" }
+mio-named-pipes = "0.1"
 miow = "~0.3.2"
 log = "*"
 bytes = "0.4"

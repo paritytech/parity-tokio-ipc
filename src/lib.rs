@@ -1,6 +1,8 @@
 //! Tokio IPC transport. Under the hood uses Unix Domain Sockets for Linux/Mac
 //! and Named Pipes for Windows.
 
+#![warn(missing_docs)]
+
 extern crate futures;
 extern crate tokio_uds;
 extern crate tokio_named_pipes;
@@ -130,6 +132,7 @@ impl Endpoint {
         tokio_uds::UnixListener::bind(&self.path)
     }
 
+    /// Set security attributes for the connection
     pub fn set_security_attributes(&mut self, security_attributes: SecurityAttributes) {
         self.security_attributes = security_attributes;
     }
@@ -240,6 +243,7 @@ pub struct IpcConnection {
 }
 
 impl IpcConnection {
+    /// Make new connection using the provided path and running event pool.
     pub fn connect<P: AsRef<Path>>(path: P, handle: &Handle) -> io::Result<IpcConnection> {
         Ok(IpcConnection{
             inner: Self::connect_inner(path.as_ref(), handle)?,
