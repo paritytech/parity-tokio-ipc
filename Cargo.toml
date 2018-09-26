@@ -18,7 +18,7 @@ tokio = "0.1"
 rand = "0.3"
 mio-named-pipes = "0.1"
 miow = "~0.3.2"
-log = "*"
+log = "0.4"
 bytes = "0.4"
 
 [target.'cfg(windows)'.dependencies]
