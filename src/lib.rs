@@ -254,12 +254,11 @@ impl IpcConnection {
             path,
             Some(std::time::Duration::from_millis(PIPE_AVAILABILITY_TIMEOUT)),
         )?;
-        let mut options = OpenOptions::new();
-        options
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
-            .custom_flags(FILE_FLAG_OVERLAPPED);
-        let file = options.open(path)?;
+            .custom_flags(FILE_FLAG_OVERLAPPED)
+            .open(path)?;
         let mio_pipe =
             unsafe { mio_named_pipes::NamedPipe::from_raw_handle(file.into_raw_handle()) };
         let pipe = NamedPipe::from_pipe(mio_pipe, handle)?;
