@@ -354,6 +354,7 @@ mod tests {
     fn smoke_test() {
         let mut runtime = tokio::runtime::Runtime::new().expect("Error creating tokio runtime");
         let exec = runtime.executor();
+        #[allow(deprecated)]
         let handle = runtime.reactor().clone();
 
         let path = dummy_endpoint();
@@ -399,6 +400,7 @@ mod tests {
     #[cfg(windows)]
     fn create_pipe_with_permissions(attr: SecurityAttributes) -> ::std::io::Result<()> {
         let runtime = tokio::runtime::Runtime::new().expect("Error creating tokio runtime");
+        #[allow(deprecated)]
         let handle = runtime.reactor();
 
         let path = dummy_endpoint();
