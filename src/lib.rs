@@ -2,21 +2,7 @@
 //! and Named Pipes for Windows.
 
 #![warn(missing_docs)]
-
-extern crate futures;
-extern crate tokio_uds;
-extern crate tokio_named_pipes;
-extern crate tokio;
-
-extern crate bytes;
-#[allow(unused_imports)] #[macro_use] extern crate log;
-
-#[cfg(windows)]
-extern crate miow;
-#[cfg(windows)]
-extern crate mio_named_pipes;
-#[cfg(windows)]
-extern crate winapi;
+#![deny(rust_2018_idioms)]
 
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -45,8 +31,6 @@ const PIPE_AVAILABILITY_TIMEOUT: u64 = 5000;
 
 /// For testing/examples
 pub fn dummy_endpoint() -> String {
-    extern crate rand;
-
     let num: u64 = rand::Rng::gen(&mut rand::thread_rng());
     if cfg!(windows) {
         format!(r"\\.\pipe\my-pipe-{}", num)
@@ -109,7 +93,6 @@ impl Endpoint {
     /// Inner platform-dependant state of the endpoint
     #[cfg(windows)]
     fn inner(&mut self, handle: &Handle) -> io::Result<NamedPipe> {
-        extern crate mio_named_pipes;
         use std::os::windows::io::*;
         use miow::pipe::NamedPipeBuilder;
 
@@ -165,8 +148,6 @@ struct NamedPipeSupport {
 #[cfg(windows)]
 impl NamedPipeSupport {
     fn replacement_pipe(&mut self) -> io::Result<NamedPipe> {
-        extern crate mio_named_pipes;
-
         use std::os::windows::io::*;
         use miow::pipe::NamedPipeBuilder;
 
@@ -209,7 +190,7 @@ impl Stream for Incoming {
     fn poll(&mut self) -> Poll<Option<Self::Item>, io::Error> {
         match self.inner.pipe.connect() {
             Ok(()) => {
-                trace!("Incoming connection polled successfully");
+                log::trace!("Incoming connection polled successfully");
                 let new_listener = self.inner.replacement_pipe()?;
                 Ok(Async::Ready(Some((
                         IpcConnection {
@@ -223,7 +204,7 @@ impl Stream for Incoming {
             },
             Err(e) => {
                 if e.kind() == io::ErrorKind::WouldBlock {
-                    trace!("Incoming connection was to block, waiting for connection to become writeable");
+                    log::trace!("Incoming connection was to block, waiting for connection to become writeable");
                     self.inner.pipe.poll_write_ready()?;
                     Ok(Async::NotReady)
                 } else {
@@ -313,8 +294,6 @@ impl AsyncWrite for IpcConnection {
 
 #[cfg(test)]
 mod tests {
-    extern crate rand;
-
     use tokio::{self, io::{self, AsyncRead}, runtime::TaskExecutor, reactor::Handle};
     use futures::{sync::oneshot, Stream, Future};
     use std::thread;
@@ -337,7 +316,7 @@ mod tests {
                         reply.extend(&buf[..]);
                         io::write_all(writer, reply)
                     })
-                    .map_err(|e| {trace!("io error: {:?}", e); e })
+                    .map_err(|e| {log::trace!("io error: {:?}", e); e })
                     .map(|_| ())
                 })
                 .map_err(|_| ());

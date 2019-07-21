@@ -125,7 +125,7 @@ impl Acl {
         Self::new(&mut [])
     }
 
-    fn new(entries: &mut [AceWithSid]) -> io::Result<Acl> {
+    fn new(entries: &mut [AceWithSid<'_>]) -> io::Result<Acl> {
         let mut acl_ptr = ptr::null_mut();
         let result = unsafe {
             SetEntriesInAclW(entries.len() as u32,
