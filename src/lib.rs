@@ -102,7 +102,7 @@ impl Endpoint {
         let pipe = self.inner(handle)?;
         Ok(
             Incoming { inner: NamedPipeSupport { path: self.path, handle: handle.clone(),
-                pipe: pipe, security_attributes: self.security_attributes} }
+                pipe, security_attributes: self.security_attributes} }
           )
     }
 
@@ -145,7 +145,7 @@ impl Endpoint {
     /// New IPC endpoint at the given path
     pub fn new(path: String) -> Self {
         Endpoint {
-            path: path,
+            path,
             security_attributes: SecurityAttributes::empty(),
         }
     }
