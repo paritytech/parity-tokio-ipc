@@ -319,22 +319,9 @@ mod tests {
     use futures::{sync::oneshot, Stream, Future};
     use std::thread;
 
-    use super::Endpoint;
-    use super::IpcConnection;
+    use super::{dummy_endpoint, Endpoint, IpcConnection};
     #[cfg(windows)]
     use super::SecurityAttributes;
-
-    #[cfg(not(windows))]
-    fn random_pipe_path() -> String {
-        let num: u64 = self::rand::Rng::gen(&mut rand::thread_rng());
-        format!(r"/tmp/parity-tokio-ipc-test-pipe-{}", num)
-    }
-
-    #[cfg(windows)]
-    fn random_pipe_path() -> String {
-        let num: u64 = self::rand::Rng::gen(&mut rand::thread_rng());
-        format!(r"\\.\pipe\my-pipe-{}", num)
-    }
 
     fn run_server(path: &str, exec: TaskExecutor, handle: Handle) {
         let path = path.to_owned();
@@ -368,7 +355,7 @@ mod tests {
         let exec = runtime.executor();
         let handle = runtime.reactor().clone();
 
-        let path = random_pipe_path();
+        let path = dummy_endpoint();
 
         run_server(&path, exec, handle.clone());
 
@@ -408,7 +395,7 @@ mod tests {
         let runtime = tokio::runtime::Runtime::new().expect("Error creating tokio runtime");
         let handle = runtime.reactor();
 
-        let path = random_pipe_path();
+        let path = dummy_endpoint();
 
         let mut endpoint = Endpoint::new(path);
         endpoint.set_security_attributes(attr);
