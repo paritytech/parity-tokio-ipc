@@ -264,7 +264,7 @@ impl IpcConnection {
         use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
 
         // Wait for the pipe to become available or fail after 5 seconds.
-        miow::pipe::NamedPipe::wait(path, Some(std::time::Duration::from_millis(PIPE_AVAILABILITY_TIMEOUT))).unwrap();
+        miow::pipe::NamedPipe::wait(path, Some(std::time::Duration::from_millis(PIPE_AVAILABILITY_TIMEOUT)))?;
         let mut options = OpenOptions::new();
         options.read(true)
             .write(true)
