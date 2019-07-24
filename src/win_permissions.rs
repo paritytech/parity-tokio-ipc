@@ -1,15 +1,15 @@
-use winapi::um::winnt::*;
+use winapi::shared::winerror::ERROR_SUCCESS;
 use winapi::um::accctrl::*;
 use winapi::um::aclapi::*;
+use winapi::um::minwinbase::{LPTR, PSECURITY_ATTRIBUTES, SECURITY_ATTRIBUTES};
 use winapi::um::securitybaseapi::*;
-use winapi::um::minwinbase::{LPTR, SECURITY_ATTRIBUTES, PSECURITY_ATTRIBUTES};
 use winapi::um::winbase::{LocalAlloc, LocalFree};
-use winapi::shared::winerror::ERROR_SUCCESS;
+use winapi::um::winnt::*;
 
-use std::ptr;
 use std::io;
-use std::mem;
 use std::marker;
+use std::mem;
+use std::ptr;
 
 /// Security attributes.
 pub struct SecurityAttributes {
@@ -24,13 +24,17 @@ impl SecurityAttributes {
 
     /// New default security attributes that allow everyone to connect.
     pub fn allow_everyone_connect() -> io::Result<SecurityAttributes> {
-        let attributes = Some(InnerAttributes::allow_everyone(GENERIC_READ | FILE_WRITE_DATA)?);
+        let attributes = Some(InnerAttributes::allow_everyone(
+            GENERIC_READ | FILE_WRITE_DATA,
+        )?);
         Ok(SecurityAttributes { attributes })
     }
 
     /// New default security attributes that allow everyone to create.
     pub fn allow_everyone_create() -> io::Result<SecurityAttributes> {
-        let attributes = Some(InnerAttributes::allow_everyone(GENERIC_READ | GENERIC_WRITE)?);
+        let attributes = Some(InnerAttributes::allow_everyone(
+            GENERIC_READ | GENERIC_WRITE,
+        )?);
         Ok(SecurityAttributes { attributes })
     }
 
@@ -45,9 +49,8 @@ impl SecurityAttributes {
 
 unsafe impl Send for SecurityAttributes {}
 
-
 struct Sid {
-    sid_ptr: PSID
+    sid_ptr: PSID,
 }
 
 impl Sid {
@@ -55,15 +58,23 @@ impl Sid {
         let mut sid_ptr = ptr::null_mut();
         let result = unsafe {
             AllocateAndInitializeSid(
-                SECURITY_WORLD_SID_AUTHORITY.as_mut_ptr() as *mut _, 1,
+                SECURITY_WORLD_SID_AUTHORITY.as_mut_ptr() as *mut _,
+                1,
                 SECURITY_WORLD_RID,
-                0, 0, 0, 0, 0, 0, 0,
-                &mut sid_ptr)
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                &mut sid_ptr,
+            )
         };
         if result == 0 {
             Err(io::Error::last_os_error())
         } else {
-            Ok(Sid{sid_ptr})
+            Ok(Sid { sid_ptr })
         }
     }
 
@@ -76,11 +87,12 @@ impl Sid {
 impl Drop for Sid {
     fn drop(&mut self) {
         if !self.sid_ptr.is_null() {
-            unsafe{ FreeSid(self.sid_ptr); }
+            unsafe {
+                FreeSid(self.sid_ptr);
+            }
         }
     }
 }
-
 
 struct AceWithSid<'a> {
     explicit_access: EXPLICIT_ACCESS_W,
@@ -90,11 +102,11 @@ struct AceWithSid<'a> {
 impl<'a> AceWithSid<'a> {
     fn new(sid: &'a Sid, trustee_type: u32) -> AceWithSid<'a> {
         let mut explicit_access = unsafe { mem::zeroed::<EXPLICIT_ACCESS_W>() };
-        explicit_access.Trustee.TrusteeForm  = TRUSTEE_IS_SID;
-        explicit_access.Trustee.TrusteeType  = trustee_type;
-        explicit_access.Trustee.ptstrName    = unsafe { sid.as_ptr() as *mut _ };
+        explicit_access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+        explicit_access.Trustee.TrusteeType = trustee_type;
+        explicit_access.Trustee.ptstrName = unsafe { sid.as_ptr() as *mut _ };
 
-        AceWithSid{
+        AceWithSid {
             explicit_access,
             _marker: marker::PhantomData,
         }
@@ -125,19 +137,22 @@ impl Acl {
         Self::new(&mut [])
     }
 
-    fn new(entries: &mut [AceWithSid]) -> io::Result<Acl> {
+    fn new(entries: &mut [AceWithSid<'_>]) -> io::Result<Acl> {
         let mut acl_ptr = ptr::null_mut();
         let result = unsafe {
-            SetEntriesInAclW(entries.len() as u32,
+            SetEntriesInAclW(
+                entries.len() as u32,
                 entries.as_mut_ptr() as *mut _,
-                ptr::null_mut(), &mut acl_ptr)
+                ptr::null_mut(),
+                &mut acl_ptr,
+            )
         };
 
         if result != ERROR_SUCCESS {
             return Err(io::Error::from_raw_os_error(result as i32));
         }
 
-        Ok(Acl{acl_ptr})
+        Ok(Acl { acl_ptr })
     }
 
     unsafe fn as_ptr(&self) -> PACL {
@@ -157,33 +172,30 @@ struct SecurityDescriptor {
     descriptor_ptr: PSECURITY_DESCRIPTOR,
 }
 
-impl SecurityDescriptor{
+impl SecurityDescriptor {
     fn new() -> io::Result<Self> {
-        let descriptor_ptr = unsafe {
-            LocalAlloc(LPTR, SECURITY_DESCRIPTOR_MIN_LENGTH)
-        };
+        let descriptor_ptr = unsafe { LocalAlloc(LPTR, SECURITY_DESCRIPTOR_MIN_LENGTH) };
         if descriptor_ptr.is_null() {
-            return Err(io::Error::new(io::ErrorKind::Other,
-                                      "Failed to allocate security descriptor"));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Failed to allocate security descriptor",
+            ));
         }
 
-        if unsafe { InitializeSecurityDescriptor(
-                descriptor_ptr,
-                SECURITY_DESCRIPTOR_REVISION) == 0 }
-        {
+        if unsafe {
+            InitializeSecurityDescriptor(descriptor_ptr, SECURITY_DESCRIPTOR_REVISION) == 0
+        } {
             return Err(io::Error::last_os_error());
         };
 
-        Ok(SecurityDescriptor{descriptor_ptr})
+        Ok(SecurityDescriptor { descriptor_ptr })
     }
 
     fn set_dacl(&mut self, acl: &Acl) -> io::Result<()> {
         if unsafe {
-            SetSecurityDescriptorDacl(
-                self.descriptor_ptr,
-                true as i32, acl.as_ptr(),
-                false as i32) == 0
-        }{
+            SetSecurityDescriptorDacl(self.descriptor_ptr, true as i32, acl.as_ptr(), false as i32)
+                == 0
+        } {
             return Err(io::Error::last_os_error());
         }
         Ok(())
@@ -209,19 +221,17 @@ struct InnerAttributes {
     attrs: SECURITY_ATTRIBUTES,
 }
 
-
 impl InnerAttributes {
-
     fn empty() -> io::Result<InnerAttributes> {
         let descriptor = SecurityDescriptor::new()?;
         let mut attrs = unsafe { mem::zeroed::<SECURITY_ATTRIBUTES>() };
         attrs.nLength = mem::size_of::<SECURITY_ATTRIBUTES>() as u32;
-        attrs.lpSecurityDescriptor = unsafe {descriptor.as_ptr()};
+        attrs.lpSecurityDescriptor = unsafe { descriptor.as_ptr() };
         attrs.bInheritHandle = false as i32;
 
         let acl = Acl::empty().expect("this should never fail");
 
-        Ok(InnerAttributes{
+        Ok(InnerAttributes {
             acl,
             descriptor,
             attrs,
@@ -234,10 +244,10 @@ impl InnerAttributes {
         println!("pisec");
 
         let mut everyone_ace = AceWithSid::new(&sid, TRUSTEE_IS_WELL_KNOWN_GROUP);
-        everyone_ace.set_access_mode(SET_ACCESS)
-                    .set_access_permissions(permissions)
-                    .allow_inheritance(false as u32);
-
+        everyone_ace
+            .set_access_mode(SET_ACCESS)
+            .set_access_permissions(permissions)
+            .allow_inheritance(false as u32);
 
         let mut entries = vec![everyone_ace];
         attributes.acl = Acl::new(&mut entries)?;

@@ -2,29 +2,15 @@
 //! and Named Pipes for Windows.
 
 #![warn(missing_docs)]
-
-extern crate futures;
-extern crate tokio_uds;
-extern crate tokio_named_pipes;
-extern crate tokio;
-
-extern crate bytes;
-#[allow(unused_imports)] #[macro_use] extern crate log;
-
-#[cfg(windows)]
-extern crate miow;
-#[cfg(windows)]
-extern crate mio_named_pipes;
-#[cfg(windows)]
-extern crate winapi;
+#![deny(rust_2018_idioms)]
 
 use std::io::{self, Read, Write};
 use std::path::Path;
 
+use bytes::{Buf, BufMut};
 use futures::{stream::Stream, Async, Poll};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::reactor::Handle;
-use bytes::{BufMut, Buf};
 
 #[cfg(windows)]
 use tokio_named_pipes::NamedPipe;
@@ -45,8 +31,6 @@ const PIPE_AVAILABILITY_TIMEOUT: u64 = 5000;
 
 /// For testing/examples
 pub fn dummy_endpoint() -> String {
-    extern crate rand;
-
     let num: u64 = rand::Rng::gen(&mut rand::thread_rng());
     if cfg!(windows) {
         format!(r"\\.\pipe\my-pipe-{}", num)
@@ -91,36 +75,41 @@ impl Endpoint {
     /// Stream of incoming connections
     #[cfg(not(windows))]
     pub fn incoming(self, handle: &Handle) -> io::Result<Incoming> {
-        Ok(
-            Incoming { inner: self.inner(handle)?.incoming() }
-          )
+        Ok(Incoming {
+            inner: self.inner(handle)?.incoming(),
+        })
     }
 
     /// Stream of incoming connections
     #[cfg(windows)]
     pub fn incoming(mut self, handle: &Handle) -> io::Result<Incoming> {
         let pipe = self.inner(handle)?;
-        Ok(
-            Incoming { inner: NamedPipeSupport { path: self.path, handle: handle.clone(),
-                pipe: pipe, security_attributes: self.security_attributes} }
-          )
+        Ok(Incoming {
+            inner: NamedPipeSupport {
+                path: self.path,
+                handle: handle.clone(),
+                pipe,
+                security_attributes: self.security_attributes,
+            },
+        })
     }
 
     /// Inner platform-dependant state of the endpoint
     #[cfg(windows)]
     fn inner(&mut self, handle: &Handle) -> io::Result<NamedPipe> {
-        extern crate mio_named_pipes;
-        use std::os::windows::io::*;
         use miow::pipe::NamedPipeBuilder;
+        use std::os::windows::io::*;
 
-        let raw_handle = unsafe { NamedPipeBuilder::new(&self.path)
-            .first(true)
-            .inbound(true)
-            .outbound(true)
-            .out_buffer_size(65536)
-            .in_buffer_size(65536)
-            .with_security_attributes(self.security_attributes.as_ptr())?
-            .into_raw_handle()};
+        let raw_handle = unsafe {
+            NamedPipeBuilder::new(&self.path)
+                .first(true)
+                .inbound(true)
+                .outbound(true)
+                .out_buffer_size(65536)
+                .in_buffer_size(65536)
+                .with_security_attributes(self.security_attributes.as_ptr())?
+                .into_raw_handle()
+        };
 
         let mio_pipe = unsafe { mio_named_pipes::NamedPipe::from_raw_handle(raw_handle) };
         NamedPipe::from_pipe(mio_pipe, handle)
@@ -145,7 +134,7 @@ impl Endpoint {
     /// New IPC endpoint at the given path
     pub fn new(path: String) -> Self {
         Endpoint {
-            path: path,
+            path,
             security_attributes: SecurityAttributes::empty(),
         }
     }
@@ -165,19 +154,19 @@ struct NamedPipeSupport {
 #[cfg(windows)]
 impl NamedPipeSupport {
     fn replacement_pipe(&mut self) -> io::Result<NamedPipe> {
-        extern crate mio_named_pipes;
-
-        use std::os::windows::io::*;
         use miow::pipe::NamedPipeBuilder;
+        use std::os::windows::io::*;
 
-        let raw_handle = unsafe { NamedPipeBuilder::new(&self.path)
-            .first(false)
-            .inbound(true)
-            .outbound(true)
-            .out_buffer_size(65536)
-            .in_buffer_size(65536)
-            .with_security_attributes(self.security_attributes.as_ptr())?
-            .into_raw_handle()};
+        let raw_handle = unsafe {
+            NamedPipeBuilder::new(&self.path)
+                .first(false)
+                .inbound(true)
+                .outbound(true)
+                .out_buffer_size(65536)
+                .in_buffer_size(65536)
+                .with_security_attributes(self.security_attributes.as_ptr())?
+                .into_raw_handle()
+        };
 
         let mio_pipe = unsafe { mio_named_pipes::NamedPipe::from_raw_handle(raw_handle) };
         NamedPipe::from_pipe(mio_pipe, &self.handle)
@@ -209,27 +198,24 @@ impl Stream for Incoming {
     fn poll(&mut self) -> Poll<Option<Self::Item>, io::Error> {
         match self.inner.pipe.connect() {
             Ok(()) => {
-                trace!("Incoming connection polled successfully");
+                log::trace!("Incoming connection polled successfully");
                 let new_listener = self.inner.replacement_pipe()?;
                 Ok(Async::Ready(Some((
-                        IpcConnection {
-                            inner: ::std::mem::replace(
-                                &mut self.inner.pipe,
-                                new_listener,
-                            )
-                        },
-                        RemoteId,
+                    IpcConnection {
+                        inner: ::std::mem::replace(&mut self.inner.pipe, new_listener),
+                    },
+                    RemoteId,
                 ))))
-            },
+            }
             Err(e) => {
                 if e.kind() == io::ErrorKind::WouldBlock {
-                    trace!("Incoming connection was to block, waiting for connection to become writeable");
+                    log::trace!("Incoming connection was to block, waiting for connection to become writeable");
                     self.inner.pipe.poll_write_ready()?;
                     Ok(Async::NotReady)
                 } else {
                     Err(e)
                 }
-            },
+            }
         }
     }
 }
@@ -245,7 +231,7 @@ pub struct IpcConnection {
 impl IpcConnection {
     /// Make new connection using the provided path and running event pool.
     pub fn connect<P: AsRef<Path>>(path: P, handle: &Handle) -> io::Result<IpcConnection> {
-        Ok(IpcConnection{
+        Ok(IpcConnection {
             inner: Self::connect_inner(path.as_ref(), handle)?,
         })
     }
@@ -264,13 +250,17 @@ impl IpcConnection {
         use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
 
         // Wait for the pipe to become available or fail after 5 seconds.
-        miow::pipe::NamedPipe::wait(path, Some(std::time::Duration::from_millis(PIPE_AVAILABILITY_TIMEOUT)))?;
-        let mut options = OpenOptions::new();
-        options.read(true)
+        miow::pipe::NamedPipe::wait(
+            path,
+            Some(std::time::Duration::from_millis(PIPE_AVAILABILITY_TIMEOUT)),
+        )?;
+        let file = OpenOptions::new()
+            .read(true)
             .write(true)
-            .custom_flags(FILE_FLAG_OVERLAPPED);
-        let file = options.open(path)?;
-        let mio_pipe = unsafe { mio_named_pipes::NamedPipe::from_raw_handle(file.into_raw_handle()) };
+            .custom_flags(FILE_FLAG_OVERLAPPED)
+            .open(path)?;
+        let mio_pipe =
+            unsafe { mio_named_pipes::NamedPipe::from_raw_handle(file.into_raw_handle()) };
         let pipe = NamedPipe::from_pipe(mio_pipe, handle)?;
         Ok(pipe)
     }
@@ -313,45 +303,42 @@ impl AsyncWrite for IpcConnection {
 
 #[cfg(test)]
 mod tests {
-    extern crate rand;
-
-    use tokio::{self, io::{self, AsyncRead}, runtime::TaskExecutor, reactor::Handle};
-    use futures::{sync::oneshot, Stream, Future};
+    use futures::{sync::oneshot, Future, Stream};
     use std::thread;
+    use tokio::{
+        self,
+        io::{self, AsyncRead},
+        reactor::Handle,
+        runtime::TaskExecutor,
+    };
 
-    use super::Endpoint;
-    use super::IpcConnection;
     #[cfg(windows)]
     use super::SecurityAttributes;
-
-    #[cfg(not(windows))]
-    fn random_pipe_path() -> String {
-        let num: u64 = self::rand::Rng::gen(&mut rand::thread_rng());
-        format!(r"/tmp/parity-tokio-ipc-test-pipe-{}", num)
-    }
-
-    #[cfg(windows)]
-    fn random_pipe_path() -> String {
-        let num: u64 = self::rand::Rng::gen(&mut rand::thread_rng());
-        format!(r"\\.\pipe\my-pipe-{}", num)
-    }
+    use super::{dummy_endpoint, Endpoint, IpcConnection};
 
     fn run_server(path: &str, exec: TaskExecutor, handle: Handle) {
         let path = path.to_owned();
         let (ok_signal, ok_rx) = oneshot::channel();
         thread::spawn(move || {
             let endpoint = Endpoint::new(path);
-            let connections = endpoint.incoming(&handle).expect("failed to open up a new pipe/socket");
-            let srv = connections.for_each(|(stream, _)| {
+            let connections = endpoint
+                .incoming(&handle)
+                .expect("failed to open up a new pipe/socket");
+            let srv = connections
+                .for_each(|(stream, _)| {
                     let (reader, writer) = stream.split();
                     let buf = [0u8; 5];
-                    io::read_exact(reader,buf).and_then(move |(_reader, buf)| {
-                        let mut reply = vec![];
-                        reply.extend(&buf[..]);
-                        io::write_all(writer, reply)
-                    })
-                    .map_err(|e| {trace!("io error: {:?}", e); e })
-                    .map(|_| ())
+                    io::read_exact(reader, buf)
+                        .and_then(move |(_reader, buf)| {
+                            let mut reply = vec![];
+                            reply.extend(&buf[..]);
+                            io::write_all(writer, reply)
+                        })
+                        .map_err(|e| {
+                            log::trace!("io error: {:?}", e);
+                            e
+                        })
+                        .map(|_| ())
                 })
                 .map_err(|_| ());
             exec.spawn(srv);
@@ -366,9 +353,10 @@ mod tests {
     fn smoke_test() {
         let mut runtime = tokio::runtime::Runtime::new().expect("Error creating tokio runtime");
         let exec = runtime.executor();
+        #[allow(deprecated)]
         let handle = runtime.reactor().clone();
 
-        let path = random_pipe_path();
+        let path = dummy_endpoint();
 
         run_server(&path, exec, handle.clone());
 
@@ -382,7 +370,8 @@ mod tests {
         let client_0_fut = io::write_all(client_0, msg)
             .map_err(|err| panic!("Client 0 write error: {:?}", err))
             .and_then(move |(client, _)| {
-                io::read_exact(client, rx_buf).map(|(_, buf)| buf)
+                io::read_exact(client, rx_buf)
+                    .map(|(_, buf)| buf)
                     .map_err(|err| panic!("Client 0 read error: {:?}", err))
             });
 
@@ -390,15 +379,19 @@ mod tests {
         let client_1_fut = io::write_all(client_1, msg)
             .map_err(|err| panic!("Client 1 write error: {:?}", err))
             .and_then(move |(client, _)| {
-                io::read_exact(client, rx_buf2).map(|(_, buf)| buf)
+                io::read_exact(client, rx_buf2)
+                    .map(|(_, buf)| buf)
                     .map_err(|err| panic!("Client 1 read error: {:?}", err))
             });
 
-        let fut = client_0_fut.join(client_1_fut).and_then(move |(rx_msg, other_rx_msg)| {
-            assert_eq!(rx_msg,  msg);
-            assert_eq!(other_rx_msg,  msg);
-            Ok(())
-        }).map_err(|err| panic!("Smoke test error: {:?}", err));
+        let fut = client_0_fut
+            .join(client_1_fut)
+            .and_then(move |(rx_msg, other_rx_msg)| {
+                assert_eq!(rx_msg, msg);
+                assert_eq!(other_rx_msg, msg);
+                Ok(())
+            })
+            .map_err(|err| panic!("Smoke test error: {:?}", err));
 
         runtime.block_on(fut).expect("Runtime error")
     }
@@ -406,9 +399,10 @@ mod tests {
     #[cfg(windows)]
     fn create_pipe_with_permissions(attr: SecurityAttributes) -> ::std::io::Result<()> {
         let runtime = tokio::runtime::Runtime::new().expect("Error creating tokio runtime");
+        #[allow(deprecated)]
         let handle = runtime.reactor();
 
-        let path = random_pipe_path();
+        let path = dummy_endpoint();
 
         let mut endpoint = Endpoint::new(path);
         endpoint.set_security_attributes(attr);
@@ -418,7 +412,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn test_pipe_permissions() {
-        create_pipe_with_permissions(SecurityAttributes::empty()).expect("failed with no attributes");
+        create_pipe_with_permissions(SecurityAttributes::empty())
+            .expect("failed with no attributes");
         create_pipe_with_permissions(SecurityAttributes::allow_everyone_create().unwrap())
             .expect("failed with attributes for creating");
         create_pipe_with_permissions(SecurityAttributes::allow_everyone_connect().unwrap())
