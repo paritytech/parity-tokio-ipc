@@ -23,7 +23,7 @@ impl SecurityAttributes {
     }
 
     /// New default security attributes that allow everyone to connect.
-    pub fn allow_everyone_connect() -> io::Result<SecurityAttributes> {
+    pub fn allow_everyone_connect(&self, _mode: Option<u32>) -> io::Result<SecurityAttributes> {
         let attributes = Some(InnerAttributes::allow_everyone(
             GENERIC_READ | FILE_WRITE_DATA,
         )?);

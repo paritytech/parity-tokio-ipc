@@ -75,9 +75,14 @@ impl Endpoint {
     /// Stream of incoming connections
     #[cfg(not(windows))]
     pub fn incoming(self, handle: &Handle) -> io::Result<Incoming> {
-        Ok(Incoming {
-            inner: self.inner(handle)?.incoming(),
-        })
+        let inner = self.inner(handle)?.incoming();
+        unsafe {
+            // the call to bind in `inner()` creates the file
+            // `apply_permission()` will set the file permissions.
+            self.security_attributes.apply_permissions(&self.path)?;
+        }
+        println!("Applied permission!");
+        Ok(Incoming { inner })
     }
 
     /// Stream of incoming connections
@@ -312,15 +317,18 @@ mod tests {
         runtime::TaskExecutor,
     };
 
-    #[cfg(windows)]
-    use super::SecurityAttributes;
-    use super::{dummy_endpoint, Endpoint, IpcConnection};
+    use super::{dummy_endpoint, Endpoint, IpcConnection, SecurityAttributes};
 
     fn run_server(path: &str, exec: TaskExecutor, handle: Handle) {
         let path = path.to_owned();
         let (ok_signal, ok_rx) = oneshot::channel();
         thread::spawn(move || {
-            let endpoint = Endpoint::new(path);
+            let mut endpoint = Endpoint::new(path);
+            endpoint.set_security_attributes(
+                SecurityAttributes::empty()
+                    .allow_everyone_connect(Some(0o777))
+                    .unwrap()
+            );
             let connections = endpoint
                 .incoming(&handle)
                 .expect("failed to open up a new pipe/socket");

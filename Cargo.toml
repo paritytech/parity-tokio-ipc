@@ -21,6 +21,7 @@ rand = "0.7"
 tokio = "0.1"
 tokio-named-pipes = "0.1"
 tokio-uds = "0.2"
+libc = "0.2.65"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winbase", "winnt", "accctrl", "aclapi", "securitybaseapi", "minwinbase", "winbase"] }
