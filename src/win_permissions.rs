@@ -273,7 +273,8 @@ mod test {
 
     #[test]
     fn test_allow_eveyone_read_write() {
-        SecurityAttributes::allow_everyone_connect()
+        SecurityAttributes::empty()
+            .allow_everyone_connect(None)
             .expect("failed to create security attributes that allow everyone to read and write to/from a pipe");
     }
 
