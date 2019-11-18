@@ -3,10 +3,16 @@ use libc::chmod;
 use std::ffi::CString;
 use std::io::Error;
 
+#[cfg(target_os="macos")]
+type Flags = u16;
+
+#[cfg(not(target_os="macos"))]
+type Flags = u32;
+
 /// Socket permissions and ownership on UNIX
 pub struct SecurityAttributes {
     // read/write permissions for owner, group and others in unix octal.
-    mode: Option<u32>
+    mode: Option<Flags>
 }
 
 impl SecurityAttributes {
@@ -24,7 +30,7 @@ impl SecurityAttributes {
     }
 
     /// Set a custom permission on the socket
-    pub fn set_mode(mut self, mode: u32) -> io::Result<Self> {
+    pub fn set_mode(mut self, mode: Flags) -> io::Result<Self> {
         self.mode = Some(mode);
         Ok(self)
     }
