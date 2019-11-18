@@ -75,9 +75,13 @@ impl Endpoint {
     /// Stream of incoming connections
     #[cfg(not(windows))]
     pub fn incoming(self, handle: &Handle) -> io::Result<Incoming> {
-        Ok(Incoming {
-            inner: self.inner(handle)?.incoming(),
-        })
+        let inner = self.inner(handle)?.incoming();
+        unsafe {
+            // the call to bind in `inner()` creates the file
+            // `apply_permission()` will set the file permissions.
+            self.security_attributes.apply_permissions(&self.path)?;
+        }
+        Ok(Incoming { inner, path: self.path })
     }
 
     /// Stream of incoming connections
@@ -85,6 +89,7 @@ impl Endpoint {
     pub fn incoming(mut self, handle: &Handle) -> io::Result<Incoming> {
         let pipe = self.inner(handle)?;
         Ok(Incoming {
+            path: self.path.clone(),
             inner: NamedPipeSupport {
                 path: self.path,
                 handle: handle.clone(),
@@ -175,6 +180,7 @@ impl NamedPipeSupport {
 
 /// Stream of incoming connections
 pub struct Incoming {
+    path: String,
     #[cfg(not(windows))]
     inner: tokio_uds::Incoming,
     #[cfg(windows)]
@@ -216,6 +222,16 @@ impl Stream for Incoming {
                     Err(e)
                 }
             }
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for Incoming {
+    fn drop(&mut self) {
+        use std::fs;
+        if let Ok(()) = fs::remove_file(Path::new(&self.path)) {
+            log::trace!("Removed socket file at: {}", self.path)
         }
     }
 }
@@ -305,6 +321,7 @@ impl AsyncWrite for IpcConnection {
 mod tests {
     use futures::{sync::oneshot, Future, Stream};
     use std::thread;
+    use std::time::Duration;
     use tokio::{
         self,
         io::{self, AsyncRead},
@@ -312,15 +329,21 @@ mod tests {
         runtime::TaskExecutor,
     };
 
-    #[cfg(windows)]
-    use super::SecurityAttributes;
-    use super::{dummy_endpoint, Endpoint, IpcConnection};
+    use super::{dummy_endpoint, Endpoint, IpcConnection, SecurityAttributes};
+    use futures::sync::oneshot::Sender;
+    use std::path::Path;
 
-    fn run_server(path: &str, exec: TaskExecutor, handle: Handle) {
+    fn run_server(path: &str, exec: TaskExecutor, handle: Handle) -> Sender<()> {
         let path = path.to_owned();
         let (ok_signal, ok_rx) = oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
         thread::spawn(move || {
-            let endpoint = Endpoint::new(path);
+            let mut endpoint = Endpoint::new(path);
+            endpoint.set_security_attributes(
+                SecurityAttributes::empty()
+                    .set_mode(0o777)
+                    .unwrap()
+            );
             let connections = endpoint
                 .incoming(&handle)
                 .expect("failed to open up a new pipe/socket");
@@ -340,12 +363,24 @@ mod tests {
                         })
                         .map(|_| ())
                 })
-                .map_err(|_| ());
+                .map_err(|_| ())
+                .select(
+                    shutdown_rx
+                        .map_err(|_| ())
+                )
+                .map(|(_, server)| {
+                    drop(server);
+                    ()
+                })
+                .map_err(|_| {
+                    ()
+                });
             exec.spawn(srv);
             ok_signal.send(()).expect("failed to send ok");
             println!("Server running.");
         });
-        ok_rx.wait().expect("failed to receive handle")
+        ok_rx.wait().expect("failed to receive handle");
+        shutdown_tx
     }
 
     // NOTE: Intermittently fails or stalls on windows.
@@ -357,13 +392,14 @@ mod tests {
         let handle = runtime.reactor().clone();
 
         let path = dummy_endpoint();
-
-        run_server(&path, exec, handle.clone());
+        let shutdown = run_server(&path, exec, handle.clone());
 
         println!("Connecting to client 0...");
-        let client_0 = IpcConnection::connect(&path, &handle).expect("failed to open client_0");
+        let client_0 = IpcConnection::connect(&path, &handle)
+            .expect("failed to open client_0");
         println!("Connecting to client 1...");
-        let client_1 = IpcConnection::connect(&path, &handle).expect("failed to open client_1");
+        let client_1 = IpcConnection::connect(&path, &handle)
+            .expect("failed to open client_1");
         let msg = b"hello";
 
         let rx_buf = vec![0u8; msg.len()];
@@ -393,7 +429,16 @@ mod tests {
             })
             .map_err(|err| panic!("Smoke test error: {:?}", err));
 
-        runtime.block_on(fut).expect("Runtime error")
+        runtime.block_on(fut).expect("Runtime error");
+
+        // shutdown server
+        if let Ok(()) = shutdown.send(()) {
+            // wait one second for the file to be deleted.
+            thread::sleep(Duration::from_secs(1));
+            let path = Path::new(&path);
+            // assert that it has
+            assert!(!path.exists());
+        }
     }
 
     #[cfg(windows)]
@@ -416,7 +461,7 @@ mod tests {
             .expect("failed with no attributes");
         create_pipe_with_permissions(SecurityAttributes::allow_everyone_create().unwrap())
             .expect("failed with attributes for creating");
-        create_pipe_with_permissions(SecurityAttributes::allow_everyone_connect().unwrap())
+        create_pipe_with_permissions(SecurityAttributes::empty().allow_everyone_connect().unwrap())
             .expect("failed with attributes for connecting");
     }
 }
