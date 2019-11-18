@@ -226,6 +226,7 @@ impl Stream for Incoming {
     }
 }
 
+#[cfg(unix)]
 impl Drop for Incoming {
     fn drop(&mut self) {
         use std::fs;
