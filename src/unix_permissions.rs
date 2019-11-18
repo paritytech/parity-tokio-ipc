@@ -3,9 +3,9 @@ use libc::chmod;
 use std::ffi::CString;
 use std::io::Error;
 
-/// A NOOP struct for bringing the API between Windows and Unix up to parity. To set permissions
-/// properly on Unix, you can just use `std::os::unix::fs::PermissionsExt`.
+/// Socket permissions and ownership on UNIX
 pub struct SecurityAttributes {
+    // read/write permissions for owner, group and others in unix octal.
     mode: Option<u32>
 }
 
@@ -18,8 +18,14 @@ impl SecurityAttributes {
     }
 
     /// New security attributes that allow everyone to connect.
-    pub fn allow_everyone_connect(mut self, mode: Option<u32>) -> io::Result<Self> {
-        self.mode = mode;
+    pub fn allow_everyone_connect(mut self) -> io::Result<Self> {
+        self.mode = Some(0o777);
+        Ok(self)
+    }
+
+    /// Set a custom permission on the socket
+    pub fn set_mode(mut self, mode: u32) -> io::Result<Self> {
+        self.mode = Some(mode);
         Ok(self)
     }
 
@@ -30,6 +36,8 @@ impl SecurityAttributes {
         })
     }
 
+    /// called in unix, after server socket has been created
+    /// will apply security attributes to the socket.
      pub(crate) unsafe fn apply_permissions(&self, path: &str) -> io::Result<()> {
         let path = CString::new(path.to_owned())?;
          if let Some(mode) = self.mode {

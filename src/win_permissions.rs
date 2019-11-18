@@ -30,6 +30,12 @@ impl SecurityAttributes {
         Ok(SecurityAttributes { attributes })
     }
 
+    /// Set a custom permission on the socket
+    pub fn set_mode(mut self, _mode: u32) -> io::Result<Self> {
+        // for now, does nothing.
+        Ok(self)
+    }
+
     /// New default security attributes that allow everyone to create.
     pub fn allow_everyone_create() -> io::Result<SecurityAttributes> {
         let attributes = Some(InnerAttributes::allow_everyone(
