@@ -3,16 +3,10 @@ use libc::chmod;
 use std::ffi::CString;
 use std::io::Error;
 
-#[cfg(target_os="macos")]
-type Flags = u16;
-
-#[cfg(not(target_os="macos"))]
-type Flags = u32;
-
 /// Socket permissions and ownership on UNIX
 pub struct SecurityAttributes {
     // read/write permissions for owner, group and others in unix octal.
-    mode: Option<Flags>
+    mode: Option<u16>
 }
 
 impl SecurityAttributes {
@@ -30,7 +24,7 @@ impl SecurityAttributes {
     }
 
     /// Set a custom permission on the socket
-    pub fn set_mode(mut self, mode: Flags) -> io::Result<Self> {
+    pub fn set_mode(mut self, mode: u16) -> io::Result<Self> {
         self.mode = Some(mode);
         Ok(self)
     }
@@ -47,7 +41,7 @@ impl SecurityAttributes {
      pub(crate) unsafe fn apply_permissions(&self, path: &str) -> io::Result<()> {
         let path = CString::new(path.to_owned())?;
          if let Some(mode) = self.mode {
-            if chmod(path.as_ptr(), mode) == -1 {
+            if chmod(path.as_ptr(), mode as _) == -1 {
                 return Err(Error::last_os_error())
             }
         }
