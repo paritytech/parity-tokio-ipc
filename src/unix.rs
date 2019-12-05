@@ -4,7 +4,7 @@ use std::ffi::CString;
 use std::io::Error;
 use futures::Stream;
 use tokio::prelude::*;
-use tokio::net::{UnixListener};
+use tokio::net::{UnixListener, UnixStream};
 use std::path::Path;
 
 /// Socket permissions and ownership on UNIX
@@ -83,6 +83,11 @@ impl Endpoint {
     /// Set security attributes for the connection
     pub fn set_security_attributes(&mut self, security_attributes: SecurityAttributes) {
         self.security_attributes = security_attributes;
+    }
+
+    /// Make new connection using the provided path and running event pool
+    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<impl AsyncRead + AsyncWrite> {
+        Ok(UnixStream::connect(path.as_ref()).await?)
     }
 
     /// Returns the path of the endpoint.

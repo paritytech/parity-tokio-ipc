@@ -23,7 +23,7 @@ type NamedPipe = PollEvented<mio_named_pipes::NamedPipe>;
 
 const PIPE_AVAILABILITY_TIMEOUT: u64 = 5000;
 
-/// Endpoint implemenation for windows
+/// Endpoint implementation for windows
 pub struct Endpoint {
     path: String,
     security_attributes: SecurityAttributes,
@@ -71,6 +71,35 @@ impl Endpoint {
     /// Returns the path of the endpoint.
     pub fn path(&self) -> &str {
         &self.path
+    }
+
+    /// Make new connection using the provided path and running event pool.
+    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<impl AsyncRead + AsyncWrite> {
+        Ok(IpcConnection {
+            inner: Self::connect_inner(path.as_ref())?,
+        })
+    }
+
+    fn connect_inner(path: &Path) -> io::Result<NamedPipe> {
+        use std::fs::OpenOptions;
+        use std::os::windows::fs::OpenOptionsExt;
+        use std::os::windows::io::{FromRawHandle, IntoRawHandle};
+        use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
+
+        // Wait for the pipe to become available or fail after 5 seconds.
+        miow::pipe::NamedPipe::wait(
+            path,
+            Some(std::time::Duration::from_millis(PIPE_AVAILABILITY_TIMEOUT)),
+        )?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(FILE_FLAG_OVERLAPPED)
+            .open(path)?;
+        let mio_pipe =
+            unsafe { mio_named_pipes::NamedPipe::from_raw_handle(file.into_raw_handle()) };
+        let pipe = NamedPipe::new(mio_pipe)?;
+        Ok(pipe)
     }
 
     /// New IPC endpoint at the given path
@@ -153,37 +182,6 @@ impl Stream for Incoming {
 /// IPC Connection
 pub struct IpcConnection {
     inner: NamedPipe,
-}
-
-impl IpcConnection {
-    /// Make new connection using the provided path and running event pool.
-    pub fn connect<P: AsRef<Path>>(path: P) -> io::Result<IpcConnection> {
-        Ok(IpcConnection {
-            inner: Self::connect_inner(path.as_ref())?,
-        })
-    }
-
-    fn connect_inner(path: &Path) -> io::Result<NamedPipe> {
-        use std::fs::OpenOptions;
-        use std::os::windows::fs::OpenOptionsExt;
-        use std::os::windows::io::{FromRawHandle, IntoRawHandle};
-        use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
-
-        // Wait for the pipe to become available or fail after 5 seconds.
-        miow::pipe::NamedPipe::wait(
-            path,
-            Some(std::time::Duration::from_millis(PIPE_AVAILABILITY_TIMEOUT)),
-        )?;
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(FILE_FLAG_OVERLAPPED)
-            .open(path)?;
-        let mio_pipe =
-            unsafe { mio_named_pipes::NamedPipe::from_raw_handle(file.into_raw_handle()) };
-        let pipe = NamedPipe::new(mio_pipe)?;
-        Ok(pipe)
-    }
 }
 
 impl Read for IpcConnection {

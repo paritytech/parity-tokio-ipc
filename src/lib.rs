@@ -55,7 +55,6 @@ mod tests {
 	use tokio::{
 		self,
 		io::split,
-		net::UnixStream,
 	};
 
 	use super::{dummy_endpoint, Endpoint, SecurityAttributes};
@@ -107,10 +106,10 @@ mod tests {
 		tokio::time::delay_for(Duration::from_secs(2)).await;
 
 		println!("Connecting to client 0...");
-		let mut client_0 = UnixStream::connect(&path).await
+		let mut client_0 = Endpoint::connect(&path).await
 			.expect("failed to open client_0");
 		println!("Connecting to client 1...");
-		let mut client_1 = UnixStream::connect(&path).await
+		let mut client_1 = Endpoint::connect(&path).await
 			.expect("failed to open client_1");
 		let msg = b"hello";
 
