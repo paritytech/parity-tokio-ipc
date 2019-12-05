@@ -12,15 +12,12 @@ Interprocess communication library for tokio.
 """
 
 [dependencies]
-bytes = "0.4"
-futures = "0.1"
+futures = "0.3"
 log = "0.4"
 mio-named-pipes = "0.1"
 miow = "0.3.3"
 rand = "0.7"
-tokio = "0.1"
-tokio-named-pipes = "0.1"
-tokio-uds = "0.2"
+tokio = { version = "0.2", features = ["io-driver", "io-util", "uds", "stream", "rt-core", "macros", "time"] }
 libc = "0.2.65"
 
 [target.'cfg(windows)'.dependencies]
