@@ -15,7 +15,7 @@ pub fn dummy_endpoint() -> String {
 	if cfg!(windows) {
 		format!(r"\\.\pipe\my-pipe-{}", num)
 	} else {
-		format!(r"~/Desktop/jsonrpc.ipc")
+		format!(r"/tmp/my-uds-{}", num)
 	}
 }
 
@@ -50,24 +50,20 @@ pub use unix::{SecurityAttributes, Endpoint};
 #[cfg(test)]
 mod tests {
 	use tokio::prelude::*;
-	use futures::{channel::oneshot, Future, Stream, StreamExt as _, FutureExt as _};
-	use std::thread;
+	use futures::{channel::oneshot, StreamExt as _, FutureExt as _};
 	use std::time::Duration;
 	use tokio::{
-        self,
-        io::{self, AsyncRead, split},
-        net::UnixStream,
-    };
+		self,
+		io::split,
+		net::UnixStream,
+	};
 
 	use super::{dummy_endpoint, Endpoint, SecurityAttributes};
-	use futures::channel::oneshot::Sender;
 	use std::path::Path;
-	use tokio::runtime::Runtime;
-	use futures::future::Either;
+	use futures::future::{Either, select, ready};
 
-	fn run_server(path: &str, runtime: &mut Runtime) -> Sender<()> {
+	async fn run_server(path: String) {
 		let path = path.to_owned();
-		let (shutdown_tx, shutdown_rx) = oneshot::channel();
 		let mut endpoint = Endpoint::new(path);
 
 		endpoint.set_security_attributes(
@@ -75,46 +71,40 @@ mod tests {
 				.set_mode(0o777)
 				.unwrap()
 		);
+		let mut incoming = endpoint.incoming().expect("failed to open up a new socket");
 
-        let server = async move {
-	        println!("\n\n\n\nPolling\n\n\n");
-            while let Some(result) = endpoint.incoming().expect("failed to open up a new socket").next().await {
-                match result {
-                    Ok(stream) => {
-                        let (mut reader, mut writer) = split(stream);
-                        let mut buf = [0u8; 5];
-                        reader.read_exact(&mut buf).await;
-                        writer.write_all(&buf[..]).await;
-                    }
-                    _ => unreachable!("also ideally")
-                }
-            };
-        };
-
-		runtime.spawn(
-			futures::future::select(Box::pin(server), shutdown_rx)
-				.then(|either| {
-					match either {
-						Either::Right((_, server)) => {
-							drop(server);
-						}
-						_ => unreachable!("ideally")
-					};
-					futures::future::ready(())
-				})
-		);
-		println!("Server running.");
-		shutdown_tx
+		while let Some(result) = incoming.next().await {
+			match result {
+				Ok(stream) => {
+					let (mut reader, mut writer) = split(stream);
+					let mut buf = [0u8; 5];
+					reader.read_exact(&mut buf).await.expect("unable to read from socket");
+					writer.write_all(&buf[..]).await.expect("unable to write to socket");
+				}
+				_ => unreachable!("ideally")
+			}
+		};
 	}
 
 	// NOTE: Intermittently fails or stalls on windows.
 	#[tokio::test]
 	async fn smoke_test() {
-		let mut runtime = Runtime::new().expect("Error creating tokio runtime");
 		let path = dummy_endpoint();
-		let mut shutdown = run_server(&path, &mut runtime);
+		let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
-		tokio::time::delay_for(Duration::from_secs(5)).await;
+		let server = select(Box::pin(run_server(path.clone())), shutdown_rx)
+			.then(|either| {
+				match either {
+					Either::Right((_, server)) => {
+						drop(server);
+					}
+					_ => unreachable!("also ideally")
+				};
+				ready(())
+			});
+		tokio::spawn(server);
+
+		tokio::time::delay_for(Duration::from_secs(2)).await;
 
 		println!("Connecting to client 0...");
 		let mut client_0 = UnixStream::connect(&path).await
@@ -125,21 +115,20 @@ mod tests {
 		let msg = b"hello";
 
 		let mut rx_buf = vec![0u8; msg.len()];
-		client_0.write_all(msg).await;
-		client_0.read_exact(&mut rx_buf).await;
+		client_0.write_all(msg).await.expect("Unable to write message to client");
+		client_0.read_exact(&mut rx_buf).await.expect("Unable to read message from client");
 
 		let mut rx_buf2 = vec![0u8; msg.len()];
-		client_1.write_all(msg).await;
-		client_1.read_exact(&mut rx_buf2).await;
-
+		client_1.write_all(msg).await.expect("Unable to write message to client");
+		client_1.read_exact(&mut rx_buf2).await.expect("Unable to read message from client");
 
 		assert_eq!(rx_buf, msg);
 		assert_eq!(rx_buf2, msg);
 
 		// shutdown server
-		if let Ok(()) = shutdown.send(()) {
+		if let Ok(()) = shutdown_tx.send(()) {
 			// wait one second for the file to be deleted.
-			thread::sleep(Duration::from_secs(1));
+			tokio::time::delay_for(Duration::from_secs(1)).await;
 			let path = Path::new(&path);
 			// assert that it has
 			assert!(!path.exists());

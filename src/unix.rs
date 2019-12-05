@@ -54,7 +54,7 @@ impl SecurityAttributes {
     }
 }
 
-/// ...
+/// Endpoint implementation for unix systems
 pub struct Endpoint {
     path: String,
     security_attributes: SecurityAttributes,
@@ -65,14 +65,11 @@ impl Endpoint {
     /// Stream of incoming connections
     pub fn incoming(&mut self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + '_> {
         self.unix_listener = Some(self.inner()?);
-        println!("\n\n\n\nFile Created 2!\n\n\n");
-
         unsafe {
             // the call to bind in `inner()` creates the file
             // `apply_permission()` will set the file permissions.
             self.security_attributes.apply_permissions(&self.path)?;
         };
-        println!("\n\n\n\nFile Created!\n\n\n");
         // for some unknown reason, the Incoming struct borrows the listener
         // so we have to hold on to the listener in order to return the Incoming struct.
         Ok(self.unix_listener.as_mut().unwrap().incoming())
@@ -80,7 +77,6 @@ impl Endpoint {
 
     /// Inner platform-dependant state of the endpoint
     fn inner(&self) -> io::Result<UnixListener> {
-        println!("\n\n\n\nFile Created!\n\n\n");
         UnixListener::bind(&self.path)
     }
 
@@ -96,7 +92,6 @@ impl Endpoint {
 
     /// New IPC endpoint at the given path
     pub fn new(path: String) -> Self {
-        println!("Hello from unix");
         Endpoint {
             path,
             security_attributes: SecurityAttributes::empty(),
@@ -108,7 +103,6 @@ impl Endpoint {
 impl Drop for Endpoint {
     fn drop(&mut self) {
         use std::fs;
-        println!("\n\n\nDropped!!\n\n\n");
         if let Ok(()) = fs::remove_file(Path::new(&self.path)) {
             log::trace!("Removed socket file at: {}", self.path)
         }

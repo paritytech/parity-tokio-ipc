@@ -10,7 +10,7 @@ use std::io;
 use std::marker;
 use std::mem;
 use std::ptr;
-use futures::{Stream, Future};
+use futures::Stream;
 use tokio::prelude::*;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -23,6 +23,7 @@ type NamedPipe = PollEvented<mio_named_pipes::NamedPipe>;
 
 const PIPE_AVAILABILITY_TIMEOUT: u64 = 5000;
 
+/// Endpoint implemenation for windows
 pub struct Endpoint {
     path: String,
     security_attributes: SecurityAttributes,
@@ -133,9 +134,11 @@ impl Stream for Incoming {
                     log::trace!("Incoming connection was to block, waiting for connection to become writeable");
                     match self.inner.pipe.poll_write_ready(ctx) {
                         Poll::Ready(Ok(_)) => {
-                            // TODO:
+                            // TODO: what to do here?
                         },
-                        Poll::Ready(Err(err)) => {},
+                        Poll::Ready(Err(err)) => {
+                            // TODO: also not sure what to do here :/
+                        },
                         Poll::Pending => {}
                     };
                     Poll::Pending
@@ -154,7 +157,7 @@ pub struct IpcConnection {
 
 impl IpcConnection {
     /// Make new connection using the provided path and running event pool.
-    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<IpcConnection> {
+    pub fn connect<P: AsRef<Path>>(path: P) -> io::Result<IpcConnection> {
         Ok(IpcConnection {
             inner: Self::connect_inner(path.as_ref())?,
         })
