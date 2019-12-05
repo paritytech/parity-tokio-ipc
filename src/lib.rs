@@ -136,15 +136,11 @@ mod tests {
 
 	#[cfg(windows)]
 	fn create_pipe_with_permissions(attr: SecurityAttributes) -> ::std::io::Result<()> {
-		let runtime = tokio::runtime::Runtime::new().expect("Error creating tokio runtime");
-		#[allow(deprecated)]
-			let handle = runtime.reactor();
-
 		let path = dummy_endpoint();
 
 		let mut endpoint = Endpoint::new(path);
 		endpoint.set_security_attributes(attr);
-		endpoint.incoming(handle).map(|_| ())
+		endpoint.incoming().map(|_| ())
 	}
 
 	#[cfg(windows)]
