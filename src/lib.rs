@@ -108,6 +108,9 @@ mod tests {
 		println!("Connecting to client 0...");
 		let mut client_0 = Endpoint::connect(&path).await
 			.expect("failed to open client_0");
+
+		tokio::time::delay_for(Duration::from_secs(2)).await;
+
 		println!("Connecting to client 1...");
 		let mut client_1 = Endpoint::connect(&path).await
 			.expect("failed to open client_1");

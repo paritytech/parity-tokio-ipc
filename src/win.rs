@@ -34,7 +34,6 @@ impl Endpoint {
     pub fn incoming(mut self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
         let pipe = self.inner()?;
         Ok(Incoming {
-            path: self.path.clone(),
             inner: NamedPipeSupport {
                 path: self.path,
                 pipe,
@@ -140,7 +139,6 @@ impl NamedPipeSupport {
 
 /// Stream of incoming connections
 pub struct Incoming {
-    path: String,
     inner: NamedPipeSupport,
 }
 
@@ -150,7 +148,6 @@ impl Stream for Incoming {
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.inner.pipe.get_ref().connect() {
             Ok(()) => {
-                log::trace!("Incoming connection polled successfully");
                 let new_listener = self.inner.replacement_pipe()?;
                 Poll::Ready(Some(
                     Ok(IpcConnection {
@@ -160,16 +157,7 @@ impl Stream for Incoming {
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::WouldBlock {
-                    log::trace!("Incoming connection was to block, waiting for connection to become writeable");
-                    match self.inner.pipe.poll_write_ready(ctx) {
-                        Poll::Ready(Ok(_)) => {
-                            // TODO: what to do here?
-                        },
-                        Poll::Ready(Err(err)) => {
-                            // TODO: also not sure what to do here :/
-                        },
-                        Poll::Pending => {}
-                    };
+                    ctx.waker().wake_by_ref();
                     Poll::Pending
                 } else {
                     Poll::Ready(Some(Err(e)))
