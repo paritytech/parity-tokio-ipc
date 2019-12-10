@@ -147,8 +147,8 @@ mod tests {
 	}
 
 	#[cfg(windows)]
-	#[test]
-	fn test_pipe_permissions() {
+	#[tokio::test]
+	async fn test_pipe_permissions() {
 		create_pipe_with_permissions(SecurityAttributes::empty())
 			.expect("failed with no attributes");
 		create_pipe_with_permissions(SecurityAttributes::allow_everyone_create().unwrap())
