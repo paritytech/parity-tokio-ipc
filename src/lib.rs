@@ -85,7 +85,6 @@ mod tests {
 		};
 	}
 
-	// NOTE: Intermittently fails or stalls on windows.
 	#[tokio::test]
 	async fn smoke_test() {
 		let path = dummy_endpoint();
@@ -109,7 +108,7 @@ mod tests {
 		let mut client_0 = Endpoint::connect(&path).await
 			.expect("failed to open client_0");
 
-		tokio::time::delay_for(Duration::from_secs(2)).await;
+		tokio::time::delay_for(Duration::from_millis(100)).await;
 
 		println!("Connecting to client 1...");
 		let mut client_1 = Endpoint::connect(&path).await
