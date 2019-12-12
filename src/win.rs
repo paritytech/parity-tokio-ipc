@@ -160,16 +160,7 @@ impl Stream for Incoming {
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::WouldBlock {
-                    log::trace!("Incoming connection was to block, waiting for connection to become writeable");
-                    match self.inner.pipe.poll_write_ready(ctx) {
-                        Poll::Ready(Ok(_)) => {
-                            // TODO: what to do here?
-                        },
-                        Poll::Ready(Err(err)) => {
-                            // TODO: also not sure what to do here :/
-                        },
-                        Poll::Pending => {}
-                    };
+                    ctx.waker().wake_by_ref();
                     Poll::Pending
                 } else {
                     Poll::Ready(Some(Err(e)))

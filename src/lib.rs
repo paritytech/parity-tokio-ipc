@@ -106,6 +106,7 @@ mod tests {
 		println!("Connecting to client 0...");
 		let mut client_0 = Endpoint::connect(&path).await
 			.expect("failed to open client_0");
+		tokio::time::delay_for(Duration::from_secs(2)).await;
 		println!("Connecting to client 1...");
 		let mut client_1 = Endpoint::connect(&path).await
 			.expect("failed to open client_1");
@@ -142,8 +143,8 @@ mod tests {
 	}
 
 	#[cfg(windows)]
-	#[test]
-	fn test_pipe_permissions() {
+	#[tokio::test]
+	async fn test_pipe_permissions() {
 		create_pipe_with_permissions(SecurityAttributes::empty())
 			.expect("failed with no attributes");
 		create_pipe_with_permissions(SecurityAttributes::allow_everyone_create().unwrap())
