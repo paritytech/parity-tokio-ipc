@@ -23,15 +23,13 @@ pub fn dummy_endpoint() -> String {
 ///
 /// # Examples
 ///
-/// ```
-/// extern crate tokio;
-/// extern crate futures;
-/// extern crate parity_tokio_ipc;
-///
+/// ```rust
 /// use parity_tokio_ipc::{Endpoint, dummy_endpoint};
 /// use futures::{future, Future, Stream};
+/// use tokio::runtime::Runtime;
 ///
 /// fn main() {
+///			let runtime = Runtime::new().unwrap();
 ///     let mut endpoint = Endpoint::new(dummy_endpoint());
 ///     let server = endpoint.incoming()
 ///         .expect("failed to open up a new pipe/socket")
@@ -39,9 +37,9 @@ pub fn dummy_endpoint() -> String {
 ///             println!("Connection received");
 ///             ()
 ///         });
-///     // ... run server etc.
+///			runtime.block_on(server)
 /// }
-///
+///```
 #[cfg(windows)]
 pub use win::{SecurityAttributes, Endpoint};
 #[cfg(unix)]
