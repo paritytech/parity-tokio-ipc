@@ -29,7 +29,7 @@ pub fn dummy_endpoint() -> String {
 /// use tokio::runtime::Runtime;
 ///
 /// fn main() {
-///			let runtime = Runtime::new().unwrap();
+///		let mut runtime = Runtime::new().unwrap();
 ///     let mut endpoint = Endpoint::new(dummy_endpoint());
 ///     let server = endpoint.incoming()
 ///         .expect("failed to open up a new pipe/socket")
