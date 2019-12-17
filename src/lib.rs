@@ -23,7 +23,7 @@ pub fn dummy_endpoint() -> String {
 ///
 /// # Examples
 ///
-/// ```rust
+/// ```ignore
 /// use parity_tokio_ipc::{Endpoint, dummy_endpoint};
 /// use futures::{future, Future, Stream, StreamExt};
 /// use tokio::runtime::Runtime;
@@ -37,7 +37,7 @@ pub fn dummy_endpoint() -> String {
 ///             println!("Connection received");
 ///             futures::future::ready(())
 ///         });
-///			runtime.block_on(server)
+///		runtime.block_on(server)
 /// }
 ///```
 #[cfg(windows)]
