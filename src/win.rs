@@ -34,6 +34,7 @@ impl Endpoint {
     pub fn incoming(mut self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
         let pipe = self.inner()?;
         Ok(Incoming {
+            path: self.path.clone(),
             inner: NamedPipeSupport {
                 path: self.path,
                 pipe,
@@ -139,6 +140,7 @@ impl NamedPipeSupport {
 
 /// Stream of incoming connections
 pub struct Incoming {
+    path: String,
     inner: NamedPipeSupport,
 }
 
@@ -148,6 +150,7 @@ impl Stream for Incoming {
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.inner.pipe.get_ref().connect() {
             Ok(()) => {
+                log::trace!("Incoming connection polled successfully");
                 let new_listener = self.inner.replacement_pipe()?;
                 Poll::Ready(Some(
                     Ok(IpcConnection {
@@ -459,6 +462,7 @@ impl InnerAttributes {
     fn allow_everyone(permissions: u32) -> io::Result<InnerAttributes> {
         let mut attributes = Self::empty()?;
         let sid = Sid::everyone_sid()?;
+        println!("pisec");
 
         let mut everyone_ace = AceWithSid::new(&sid, TRUSTEE_IS_WELL_KNOWN_GROUP);
         everyone_ace
