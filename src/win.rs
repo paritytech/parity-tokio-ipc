@@ -10,6 +10,221 @@ use std::io;
 use std::marker;
 use std::mem;
 use std::ptr;
+use futures::Stream;
+use tokio::prelude::*;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::path::Path;
+use std::mem::MaybeUninit;
+use std::io::{Read, Write};
+use tokio::io::PollEvented;
+
+type NamedPipe = PollEvented<mio_named_pipes::NamedPipe>;
+
+const PIPE_AVAILABILITY_TIMEOUT: u64 = 5000;
+
+/// Endpoint implementation for windows
+pub struct Endpoint {
+    path: String,
+    security_attributes: SecurityAttributes,
+}
+
+impl Endpoint {
+    /// Stream of incoming connections
+    pub fn incoming(mut self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
+        let pipe = self.inner()?;
+        Ok(Incoming {
+            path: self.path.clone(),
+            inner: NamedPipeSupport {
+                path: self.path,
+                pipe,
+                security_attributes: self.security_attributes,
+            },
+        })
+    }
+
+    /// Inner platform-dependant state of the endpoint
+    fn inner(&mut self) -> io::Result<NamedPipe> {
+        use miow::pipe::NamedPipeBuilder;
+        use std::os::windows::io::*;
+
+        let raw_handle = unsafe {
+            NamedPipeBuilder::new(&self.path)
+                .first(true)
+                .inbound(true)
+                .outbound(true)
+                .out_buffer_size(65536)
+                .in_buffer_size(65536)
+                .with_security_attributes(self.security_attributes.as_ptr())?
+                .into_raw_handle()
+        };
+
+        let mio_pipe = unsafe { mio_named_pipes::NamedPipe::from_raw_handle(raw_handle) };
+        NamedPipe::new(mio_pipe)
+    }
+
+    /// Set security attributes for the connection
+    pub fn set_security_attributes(&mut self, security_attributes: SecurityAttributes) {
+        self.security_attributes = security_attributes;
+    }
+
+    /// Returns the path of the endpoint.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Make new connection using the provided path and running event pool.
+    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<impl AsyncRead + AsyncWrite> {
+        Ok(IpcConnection {
+            inner: Self::connect_inner(path.as_ref())?,
+        })
+    }
+
+    fn connect_inner(path: &Path) -> io::Result<NamedPipe> {
+        use std::fs::OpenOptions;
+        use std::os::windows::fs::OpenOptionsExt;
+        use std::os::windows::io::{FromRawHandle, IntoRawHandle};
+        use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
+
+        // Wait for the pipe to become available or fail after 5 seconds.
+        miow::pipe::NamedPipe::wait(
+            path,
+            Some(std::time::Duration::from_millis(PIPE_AVAILABILITY_TIMEOUT)),
+        )?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(FILE_FLAG_OVERLAPPED)
+            .open(path)?;
+        let mio_pipe =
+            unsafe { mio_named_pipes::NamedPipe::from_raw_handle(file.into_raw_handle()) };
+        let pipe = NamedPipe::new(mio_pipe)?;
+        Ok(pipe)
+    }
+
+    /// New IPC endpoint at the given path
+    pub fn new(path: String) -> Self {
+        Endpoint {
+            path,
+            security_attributes: SecurityAttributes::empty(),
+        }
+    }
+}
+
+struct NamedPipeSupport {
+    path: String,
+    pipe: NamedPipe,
+    security_attributes: SecurityAttributes,
+}
+
+impl NamedPipeSupport {
+    fn replacement_pipe(&mut self) -> io::Result<NamedPipe> {
+        use miow::pipe::NamedPipeBuilder;
+        use std::os::windows::io::*;
+
+        let raw_handle = unsafe {
+            NamedPipeBuilder::new(&self.path)
+                .first(false)
+                .inbound(true)
+                .outbound(true)
+                .out_buffer_size(65536)
+                .in_buffer_size(65536)
+                .with_security_attributes(self.security_attributes.as_ptr())?
+                .into_raw_handle()
+        };
+
+        let mio_pipe = unsafe { mio_named_pipes::NamedPipe::from_raw_handle(raw_handle) };
+        NamedPipe::new(mio_pipe)
+    }
+}
+
+/// Stream of incoming connections
+pub struct Incoming {
+    path: String,
+    inner: NamedPipeSupport,
+}
+
+impl Stream for Incoming {
+    type Item = tokio::io::Result<IpcConnection>;
+
+    fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match self.inner.pipe.get_ref().connect() {
+            Ok(()) => {
+                log::trace!("Incoming connection polled successfully");
+                let new_listener = self.inner.replacement_pipe()?;
+                Poll::Ready(Some(
+                    Ok(IpcConnection {
+                        inner: ::std::mem::replace(&mut self.inner.pipe, new_listener),
+                    })
+                ))
+            }
+            Err(e) => {
+                if e.kind() == io::ErrorKind::WouldBlock {
+                    ctx.waker().wake_by_ref();
+                    Poll::Pending
+                } else {
+                    Poll::Ready(Some(Err(e)))
+                }
+            }
+        }
+    }
+}
+
+/// IPC Connection
+pub struct IpcConnection {
+    inner: NamedPipe,
+}
+
+impl Read for IpcConnection {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.get_mut().read(buf)
+    }
+}
+
+impl Write for IpcConnection {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.get_mut().write(buf)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.get_mut().flush()
+    }
+}
+
+impl AsyncRead for IpcConnection {
+    unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [MaybeUninit<u8>]) -> bool {
+        self.inner.prepare_uninitialized_buffer(buf)
+    }
+
+    fn poll_read(
+        self: Pin<&mut Self>,
+        ctx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        let this = Pin::into_inner(self);
+        Pin::new(&mut this.inner).poll_read(ctx, buf)
+    }
+}
+
+impl AsyncWrite for IpcConnection {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        ctx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let this = Pin::into_inner(self);
+        Pin::new(&mut this.inner).poll_write(ctx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        let this = Pin::into_inner(self);
+        Pin::new(&mut this.inner).poll_flush(ctx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        let this = Pin::into_inner(self);
+        Pin::new(&mut this.inner).poll_shutdown(ctx)
+    }
+}
 
 /// Security attributes.
 pub struct SecurityAttributes {
@@ -31,7 +246,7 @@ impl SecurityAttributes {
     }
 
     /// Set a custom permission on the socket
-    pub fn set_mode(mut self, _mode: u32) -> io::Result<Self> {
+    pub fn set_mode(self, _mode: u32) -> io::Result<Self> {
         // for now, does nothing.
         Ok(self)
     }
