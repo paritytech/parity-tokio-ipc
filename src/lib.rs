@@ -25,7 +25,7 @@ pub fn dummy_endpoint() -> String {
 ///
 /// ```rust
 /// use parity_tokio_ipc::{Endpoint, dummy_endpoint};
-/// use futures::{future, Future, Stream};
+/// use futures::{future, Future, Stream, StreamExt};
 /// use tokio::runtime::Runtime;
 ///
 /// fn main() {
