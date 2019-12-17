@@ -35,7 +35,7 @@ pub fn dummy_endpoint() -> String {
 ///         .expect("failed to open up a new pipe/socket")
 ///         .for_each(|_stream| {
 ///             println!("Connection received");
-///             ()
+///             futures::future::ready(())
 ///         });
 ///			runtime.block_on(server)
 /// }
