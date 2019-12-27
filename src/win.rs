@@ -166,7 +166,7 @@ impl Stream for Incoming {
     }
 }
 
-/// IPC Connection
+/// IPC connection.
 pub struct Connection {
     inner: NamedPipe,
 }

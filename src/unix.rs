@@ -116,6 +116,7 @@ impl Drop for Endpoint {
     }
 }
 
+/// IPC connection.
 pub struct Connection {
     inner: UnixStream,
 }
