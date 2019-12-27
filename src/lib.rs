@@ -31,9 +31,9 @@ mod unix;
 /// }
 ///```
 #[cfg(windows)]
-pub use win::{SecurityAttributes, Endpoint};
+pub use win::{SecurityAttributes, Endpoint, Connection};
 #[cfg(unix)]
-pub use unix::{SecurityAttributes, Endpoint};
+pub use unix::{SecurityAttributes, Endpoint, Connection};
 
 /// For testing/examples
 pub fn dummy_endpoint() -> String {
