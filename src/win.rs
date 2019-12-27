@@ -16,7 +16,6 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::path::Path;
 use std::mem::MaybeUninit;
-use std::io::{Read, Write};
 use tokio::io::PollEvented;
 
 type NamedPipe = PollEvented<mio_named_pipes::NamedPipe>;
@@ -75,9 +74,7 @@ impl Endpoint {
 
     /// Make new connection using the provided path and running event pool.
     pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<Connection> {
-        Ok(IpcConnection {
-            inner: Self::connect_inner(path.as_ref())?,
-        })
+        Ok(Connection::wrap(Self::connect_inner(path.as_ref())?))
     }
 
     fn connect_inner(path: &Path) -> io::Result<NamedPipe> {
@@ -140,23 +137,22 @@ impl NamedPipeSupport {
 
 /// Stream of incoming connections
 pub struct Incoming {
+    #[allow(dead_code)]
     path: String,
     inner: NamedPipeSupport,
 }
 
 impl Stream for Incoming {
-    type Item = tokio::io::Result<IpcConnection>;
+    type Item = tokio::io::Result<Connection>;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.inner.pipe.get_ref().connect() {
             Ok(()) => {
                 log::trace!("Incoming connection polled successfully");
                 let new_listener = self.inner.replacement_pipe()?;
-                Poll::Ready(Some(
-                    Ok(IpcConnection {
-                        inner: ::std::mem::replace(&mut self.inner.pipe, new_listener),
-                    })
-                ))
+                Poll::Ready(
+                    Some(Ok(Connection::wrap(std::mem::replace(&mut self.inner.pipe, new_listener))))
+                )
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::WouldBlock {
@@ -173,6 +169,12 @@ impl Stream for Incoming {
 /// IPC Connection
 pub struct Connection {
     inner: NamedPipe,
+}
+
+impl Connection {
+    pub fn wrap(pipe: NamedPipe) -> Self {
+        Self { inner: pipe }
+	}
 }
 
 impl AsyncRead for Connection {
