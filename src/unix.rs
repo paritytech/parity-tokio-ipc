@@ -1,11 +1,13 @@
-use std::io;
 use libc::chmod;
 use std::ffi::CString;
-use std::io::Error;
+use std::io::{self, Error};
 use futures::Stream;
 use tokio::prelude::*;
 use tokio::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::mem::MaybeUninit;
 
 /// Socket permissions and ownership on UNIX
 pub struct SecurityAttributes {
@@ -86,8 +88,8 @@ impl Endpoint {
     }
 
     /// Make new connection using the provided path and running event pool
-    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<impl AsyncRead + AsyncWrite> {
-        Ok(UnixStream::connect(path.as_ref()).await?)
+    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<Connection> {
+        Ok(Connection::wrap(UnixStream::connect(path.as_ref()).await?))
     }
 
     /// Returns the path of the endpoint.
@@ -111,5 +113,51 @@ impl Drop for Endpoint {
         if let Ok(()) = fs::remove_file(Path::new(&self.path)) {
             log::trace!("Removed socket file at: {}", self.path)
         }
+    }
+}
+
+pub struct Connection {
+    inner: UnixStream,
+}
+
+impl Connection {
+    fn wrap(stream: UnixStream) -> Self {
+        Self { inner: stream }
+    }
+}
+
+impl AsyncRead for Connection {
+    unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [MaybeUninit<u8>]) -> bool {
+        self.inner.prepare_uninitialized_buffer(buf)
+    }
+
+    fn poll_read(
+        self: Pin<&mut Self>,
+        ctx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        let this = Pin::into_inner(self);
+        Pin::new(&mut this.inner).poll_read(ctx, buf)
+    }
+}
+
+impl AsyncWrite for Connection {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        ctx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let this = Pin::into_inner(self);
+        Pin::new(&mut this.inner).poll_write(ctx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        let this = Pin::into_inner(self);
+        Pin::new(&mut this.inner).poll_flush(ctx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        let this = Pin::into_inner(self);
+        Pin::new(&mut this.inner).poll_shutdown(ctx)
     }
 }

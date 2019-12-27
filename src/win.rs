@@ -74,7 +74,7 @@ impl Endpoint {
     }
 
     /// Make new connection using the provided path and running event pool.
-    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<impl AsyncRead + AsyncWrite> {
+    pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<Connection> {
         Ok(IpcConnection {
             inner: Self::connect_inner(path.as_ref())?,
         })
@@ -171,26 +171,11 @@ impl Stream for Incoming {
 }
 
 /// IPC Connection
-pub struct IpcConnection {
+pub struct Connection {
     inner: NamedPipe,
 }
 
-impl Read for IpcConnection {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.get_mut().read(buf)
-    }
-}
-
-impl Write for IpcConnection {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.inner.get_mut().write(buf)
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        self.inner.get_mut().flush()
-    }
-}
-
-impl AsyncRead for IpcConnection {
+impl AsyncRead for Connection {
     unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [MaybeUninit<u8>]) -> bool {
         self.inner.prepare_uninitialized_buffer(buf)
     }
@@ -205,7 +190,7 @@ impl AsyncRead for IpcConnection {
     }
 }
 
-impl AsyncWrite for IpcConnection {
+impl AsyncWrite for Connection {
     fn poll_write(
         self: Pin<&mut Self>,
         ctx: &mut Context<'_>,

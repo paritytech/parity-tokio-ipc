@@ -9,16 +9,6 @@ mod win;
 #[cfg(not(windows))]
 mod unix;
 
-/// For testing/examples
-pub fn dummy_endpoint() -> String {
-	let num: u64 = rand::Rng::gen(&mut rand::thread_rng());
-	if cfg!(windows) {
-		format!(r"\\.\pipe\my-pipe-{}", num)
-	} else {
-		format!(r"/tmp/my-uds-{}", num)
-	}
-}
-
 /// Endpoint for IPC transport
 ///
 /// # Examples
@@ -44,6 +34,16 @@ pub fn dummy_endpoint() -> String {
 pub use win::{SecurityAttributes, Endpoint};
 #[cfg(unix)]
 pub use unix::{SecurityAttributes, Endpoint};
+
+/// For testing/examples
+pub fn dummy_endpoint() -> String {
+	let num: u64 = rand::Rng::gen(&mut rand::thread_rng());
+	if cfg!(windows) {
+		format!(r"\\.\pipe\my-pipe-{}", num)
+	} else {
+		format!(r"/tmp/my-uds-{}", num)
+	}
+}
 
 #[cfg(test)]
 mod tests {
@@ -83,7 +83,6 @@ mod tests {
 		};
 	}
 
-	// NOTE: Intermittently fails or stalls on windows.
 	#[tokio::test]
 	async fn smoke_test() {
 		let path = dummy_endpoint();
