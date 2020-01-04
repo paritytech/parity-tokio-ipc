@@ -449,7 +449,6 @@ impl InnerAttributes {
     fn allow_everyone(permissions: u32) -> io::Result<InnerAttributes> {
         let mut attributes = Self::empty()?;
         let sid = Sid::everyone_sid()?;
-        println!("pisec");
 
         let mut everyone_ace = AceWithSid::new(&sid, TRUSTEE_IS_WELL_KNOWN_GROUP);
         everyone_ace
