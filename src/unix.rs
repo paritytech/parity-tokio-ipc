@@ -8,6 +8,8 @@ use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::mem::MaybeUninit;
+use std::os::unix::io::FromRawFd;
+use std::os::unix::io::RawFd;
 
 /// Socket permissions and ownership on UNIX
 pub struct SecurityAttributes {
@@ -66,7 +68,9 @@ pub struct Endpoint {
 impl Endpoint {
     /// Stream of incoming connections
     pub fn incoming(&mut self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + '_> {
-        self.unix_listener = Some(self.inner()?);
+        if self.unix_listener.is_none() {
+            self.unix_listener = Some(self.inner()?);
+        }
         unsafe {
             // the call to bind in `inner()` creates the file
             // `apply_permission()` will set the file permissions.
@@ -80,6 +84,20 @@ impl Endpoint {
     /// Inner platform-dependant state of the endpoint
     fn inner(&self) -> io::Result<UnixListener> {
         UnixListener::bind(&self.path)
+    }
+
+    /// Constructs a new instance of Self from the given raw file descriptor.
+    pub fn from_raw_fd(fd: RawFd) -> Self {
+        let sys_unix_listener: std::os::unix::net::UnixListener;
+        unsafe {
+            sys_unix_listener = std::os::unix::net::UnixListener::from_raw_fd(fd);
+        }
+        let unix_listener = UnixListener::from_std(sys_unix_listener).unwrap();
+        Endpoint {
+            path: "".to_string(),
+            security_attributes: SecurityAttributes::empty(),
+            unix_listener: Some(unix_listener),
+        }
     }
 
     /// Set security attributes for the connection
@@ -123,6 +141,17 @@ pub struct Connection {
 
 impl Connection {
     fn wrap(stream: UnixStream) -> Self {
+        Self { inner: stream }
+    }
+
+    /// Constructs a new instance of Self from the given raw file descriptor.
+    pub fn from_raw_fd(fd: RawFd) -> Self {
+        let std_stream: std::os::unix::net::UnixStream;
+        unsafe {
+            std_stream = std::os::unix::net::UnixStream::from_raw_fd(fd);
+        }
+        let stream = UnixStream::from_std(std_stream).unwrap();
+
         Self { inner: stream }
     }
 }

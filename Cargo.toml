@@ -20,5 +20,9 @@ rand = "0.7"
 tokio = { version = "0.2", features = ["io-driver", "io-util", "uds", "stream", "rt-core", "macros", "time"] }
 libc = "0.2.65"
 
+
+[dev-dependencies]
+nix = "0.16.1"
+
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winbase", "winnt", "accctrl", "aclapi", "securitybaseapi", "minwinbase", "winbase"] }
