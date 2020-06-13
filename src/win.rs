@@ -51,6 +51,7 @@ impl Endpoint {
             NamedPipeBuilder::new(&self.path)
                 .first(true)
                 .inbound(true)
+                .accept_remote(false)
                 .outbound(true)
                 .out_buffer_size(65536)
                 .in_buffer_size(65536)
@@ -156,7 +157,7 @@ impl Stream for Incoming {
             }
             Err(e) => {
                 if e.kind() == io::ErrorKind::WouldBlock {
-                    self.inner.pipe.clear_write_ready(ctx);
+                    self.inner.pipe.clear_write_ready(ctx)?;
                     Poll::Pending
                 } else {
                     Poll::Ready(Some(Err(e)))
@@ -172,9 +173,10 @@ pub struct Connection {
 }
 
 impl Connection {
+    /// Wraps an existing named pipe
     pub fn wrap(pipe: NamedPipe) -> Self {
         Self { inner: pipe }
-	}
+    }
 }
 
 impl AsyncRead for Connection {
@@ -218,10 +220,24 @@ pub struct SecurityAttributes {
     attributes: Option<InnerAttributes>,
 }
 
+pub const DEFAULT_SECURITY_ATTRIBUTES: SecurityAttributes = SecurityAttributes {
+    attributes: Some(InnerAttributes {
+        descriptor: SecurityDescriptor {
+            descriptor_ptr: ptr::null_mut(),
+        },
+        acl: Acl { acl_ptr: ptr::null_mut() },
+        attrs: SECURITY_ATTRIBUTES {
+            nLength: mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: ptr::null_mut(),
+            bInheritHandle: 0,
+        },
+    })
+};
+
 impl SecurityAttributes {
     /// New default security attributes.
     pub fn empty() -> SecurityAttributes {
-        SecurityAttributes { attributes: None }
+        DEFAULT_SECURITY_ATTRIBUTES
     }
 
     /// New default security attributes that allow everyone to connect.
