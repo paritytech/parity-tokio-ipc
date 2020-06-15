@@ -221,7 +221,9 @@ pub struct SecurityAttributes {
 impl SecurityAttributes {
     /// New default security attributes.
     pub fn empty() -> SecurityAttributes {
-        SecurityAttributes { attributes: None }
+        let attributes = SecurityAttributes { attributes: None };
+        attributes.allow_everyone_connect().unwrap();
+        attributes
     }
 
     /// New default security attributes that allow everyone to connect.
@@ -269,6 +271,30 @@ impl Sid {
                 SECURITY_WORLD_SID_AUTHORITY.as_mut_ptr() as *mut _,
                 1,
                 SECURITY_WORLD_RID,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                &mut sid_ptr,
+            )
+        };
+        if result == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(Sid { sid_ptr })
+        }
+    }
+
+    fn network_sid() -> io::Result<Sid> {
+        let mut sid_ptr = ptr::null_mut();
+        let result = unsafe {
+            AllocateAndInitializeSid(
+                SECURITY_NT_AUTHORITY.as_mut_ptr() as *mut _,
+                1,
+                SECURITY_NETWORK_RID,
                 0,
                 0,
                 0,
@@ -448,15 +474,23 @@ impl InnerAttributes {
 
     fn allow_everyone(permissions: u32) -> io::Result<InnerAttributes> {
         let mut attributes = Self::empty()?;
-        let sid = Sid::everyone_sid()?;
 
+        // Deny access to NT AUTHORITY\NETWORK
+        let sid = Sid::network_sid()?;
+        let mut network_ace = AceWithSid::new(&sid, TRUSTEE_IS_WELL_KNOWN_GROUP);
+        network_ace
+            .set_access_mode(DENY_ACCESS)
+            .set_access_permissions(permissions)
+            .allow_inheritance(false as u32);
+
+        let sid = Sid::everyone_sid()?;
         let mut everyone_ace = AceWithSid::new(&sid, TRUSTEE_IS_WELL_KNOWN_GROUP);
         everyone_ace
             .set_access_mode(SET_ACCESS)
             .set_access_permissions(permissions)
             .allow_inheritance(false as u32);
 
-        let mut entries = vec![everyone_ace];
+        let mut entries = vec![network_ace, everyone_ace];
         attributes.acl = Acl::new(&mut entries)?;
         attributes.descriptor.set_dacl(&attributes.acl)?;
 
