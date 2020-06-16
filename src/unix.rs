@@ -16,16 +16,17 @@ pub struct SecurityAttributes {
 }
 
 impl SecurityAttributes {
-    /// New default security attributes.
+    /// New default security attributes. These only allow access by the
+    /// process’s own user and the system administrator.
     pub fn empty() -> Self {
         SecurityAttributes {
-            mode: None
+            mode: Some(0o600)
         }
     }
 
     /// New security attributes that allow everyone to connect.
     pub fn allow_everyone_connect(mut self) -> io::Result<Self> {
-        self.mode = Some(0o777);
+        self.mode = Some(0o666);
         Ok(self)
     }
 
@@ -36,6 +37,9 @@ impl SecurityAttributes {
     }
 
     /// New security attributes that allow everyone to create.
+    ///
+    /// This does not work on unix, where it is equivalent to
+    /// [`SecurityAttributes::allow_everyone_connect`].
     pub fn allow_everyone_create() -> io::Result<Self> {
         Ok(SecurityAttributes {
             mode: None
@@ -44,9 +48,9 @@ impl SecurityAttributes {
 
     /// called in unix, after server socket has been created
     /// will apply security attributes to the socket.
-     pub(crate) unsafe fn apply_permissions(&self, path: &str) -> io::Result<()> {
+    pub(crate) unsafe fn apply_permissions(&self, path: &str) -> io::Result<()> {
         let path = CString::new(path.to_owned())?;
-         if let Some(mode) = self.mode {
+        if let Some(mode) = self.mode {
             if chmod(path.as_ptr(), mode as _) == -1 {
                 return Err(Error::last_os_error())
             }
