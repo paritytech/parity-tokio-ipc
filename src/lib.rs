@@ -130,7 +130,16 @@ mod tests {
 			// assert that it has
 			assert!(!path.exists());
 		}
-	}
+    }
+
+    #[tokio::test]
+    async fn incoming_stream_is_static() {
+        fn is_static<T: 'static>(_: T) {}
+
+        let path = dummy_endpoint();
+        let endpoint = Endpoint::new(path);
+        is_static(endpoint.incoming());
+    }
 
 	#[cfg(windows)]
 	fn create_pipe_with_permissions(attr: SecurityAttributes) -> ::std::io::Result<()> {
