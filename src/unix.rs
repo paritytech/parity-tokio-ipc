@@ -51,7 +51,7 @@ impl SecurityAttributes {
     fn apply_permissions(&self, path: &str) -> io::Result<()> {
         if let Some(mode) = self.mode {
             let path = CString::new(path)?;
-            if unsafe { chmod(path.as_ptr(), u32::from(mode)) } == -1 {
+            if unsafe { chmod(path.as_ptr(), mode.into()) } == -1 {
                 return Err(Error::last_os_error());
             }
         }
