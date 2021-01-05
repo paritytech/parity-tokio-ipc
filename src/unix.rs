@@ -48,11 +48,11 @@ impl SecurityAttributes {
 
     /// called in unix, after server socket has been created
     /// will apply security attributes to the socket.
-    pub(crate) unsafe fn apply_permissions(&self, path: &str) -> io::Result<()> {
-        let path = CString::new(path.to_owned())?;
+    fn apply_permissions(&self, path: &str) -> io::Result<()> {
         if let Some(mode) = self.mode {
-            if chmod(path.as_ptr(), mode as _) == -1 {
-                return Err(Error::last_os_error())
+            let path = CString::new(path)?;
+            if unsafe { chmod(path.as_ptr(), mode.into()) } == -1 {
+                return Err(Error::last_os_error());
             }
         }
 
@@ -64,21 +64,19 @@ impl SecurityAttributes {
 pub struct Endpoint {
     path: String,
     security_attributes: SecurityAttributes,
-    unix_listener: Option<UnixListener>,
 }
 
 impl Endpoint {
     /// Stream of incoming connections
-    pub fn incoming(&mut self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + '_> {
-        self.unix_listener = Some(self.inner()?);
-        unsafe {
-            // the call to bind in `inner()` creates the file
-            // `apply_permission()` will set the file permissions.
-            self.security_attributes.apply_permissions(&self.path)?;
-        };
-        // for some unknown reason, the Incoming struct borrows the listener
-        // so we have to hold on to the listener in order to return the Incoming struct.
-        Ok(self.unix_listener.as_mut().unwrap().incoming())
+    pub fn incoming(self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
+        let listener = self.inner()?;
+        // the call to bind in `inner()` creates the file
+        // `apply_permission()` will set the file permissions.
+        self.security_attributes.apply_permissions(&self.path)?;
+        Ok(Incoming {
+            path: self.path,
+            listener,
+        })
     }
 
     /// Inner platform-dependant state of the endpoint
@@ -106,15 +104,34 @@ impl Endpoint {
         Endpoint {
             path,
             security_attributes: SecurityAttributes::empty(),
-            unix_listener: None,
         }
     }
 }
 
-impl Drop for Endpoint {
+/// Stream of incoming connections.
+///
+/// Removes the bound socket file when dropped.
+struct Incoming {
+    path: String,
+    listener: UnixListener,
+}
+
+impl Stream for Incoming {
+    type Item = io::Result<UnixStream>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        let this = Pin::into_inner(self);
+        Pin::new(&mut this.listener).poll_next(cx)
+    }
+}
+
+impl Drop for Incoming {
     fn drop(&mut self) {
         use std::fs;
-        if let Ok(()) = fs::remove_file(Path::new(&self.path)) {
+        if let Ok(()) = fs::remove_file(&self.path) {
             log::trace!("Removed socket file at: {}", self.path)
         }
     }
