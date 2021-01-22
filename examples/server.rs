@@ -1,9 +1,5 @@
 use futures::StreamExt as _;
-use tokio::{
-	prelude::*,
-	self,
-	io::split,
-};
+use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 
 use parity_tokio_ipc::{Endpoint, SecurityAttributes};
 
@@ -40,7 +36,7 @@ async fn run_server(path: String) {
 	};
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
 	let path = std::env::args().nth(1).expect("Run it with server path as argument");
 	run_server(path).await

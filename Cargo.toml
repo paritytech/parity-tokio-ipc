@@ -24,4 +24,4 @@ libc = "0.2.65"
 winapi = { version = "0.3", features = ["winbase", "winnt", "accctrl", "aclapi", "securitybaseapi", "minwinbase", "winbase"] }
 
 [dev-dependencies]
-tokio = { version = "1.0.0", features = ["rt", "time", "macros"] }
+tokio = { version = "1.0.0", features = ["io-util", "rt", "time", "macros"] }

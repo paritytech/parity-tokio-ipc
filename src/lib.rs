@@ -47,13 +47,9 @@ pub fn dummy_endpoint() -> String {
 
 #[cfg(test)]
 mod tests {
-	use tokio::prelude::*;
 	use futures::{channel::oneshot, StreamExt as _, FutureExt as _};
 	use std::time::Duration;
-	use tokio::{
-		self,
-		io::split,
-	};
+	use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 
 	use super::{dummy_endpoint, Endpoint, SecurityAttributes};
 	use std::path::Path;
@@ -100,12 +96,12 @@ mod tests {
 			});
 		tokio::spawn(server);
 
-		tokio::time::delay_for(Duration::from_secs(2)).await;
+		tokio::time::sleep(Duration::from_secs(2)).await;
 
 		println!("Connecting to client 0...");
 		let mut client_0 = Endpoint::connect(&path).await
 			.expect("failed to open client_0");
-		tokio::time::delay_for(Duration::from_secs(2)).await;
+		tokio::time::sleep(Duration::from_secs(2)).await;
 		println!("Connecting to client 1...");
 		let mut client_1 = Endpoint::connect(&path).await
 			.expect("failed to open client_1");
@@ -125,7 +121,7 @@ mod tests {
 		// shutdown server
 		if let Ok(()) = shutdown_tx.send(()) {
 			// wait one second for the file to be deleted.
-			tokio::time::delay_for(Duration::from_secs(1)).await;
+			tokio::time::sleep(Duration::from_secs(1)).await;
 			let path = Path::new(&path);
 			// assert that it has
 			assert!(!path.exists());
