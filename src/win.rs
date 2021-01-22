@@ -11,7 +11,7 @@ use std::marker;
 use std::mem;
 use std::ptr;
 use futures::Stream;
-use tokio::prelude::*;
+use tokio::prelude::{AsyncRead, AsyncWrite};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::path::Path;

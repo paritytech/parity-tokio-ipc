@@ -2,7 +2,7 @@ use libc::chmod;
 use std::ffi::CString;
 use std::io::{self, Error};
 use futures::Stream;
-use tokio::prelude::*;
+use tokio::prelude::{AsyncRead, AsyncWrite};
 use tokio::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::pin::Pin;
