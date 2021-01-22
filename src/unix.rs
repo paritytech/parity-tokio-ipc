@@ -68,7 +68,7 @@ pub struct Endpoint {
 
 impl Endpoint {
     /// Stream of incoming connections
-    pub fn incoming(self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
+    pub fn incoming(self) -> io::Result<impl Stream<Item = std::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
         let listener = self.inner()?;
         // the call to bind in `inner()` creates the file
         // `apply_permission()` will set the file permissions.

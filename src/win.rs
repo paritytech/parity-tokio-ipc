@@ -30,7 +30,7 @@ pub struct Endpoint {
 
 impl Endpoint {
     /// Stream of incoming connections
-    pub fn incoming(mut self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
+    pub fn incoming(mut self) -> io::Result<impl Stream<Item = std::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
         let pipe = self.inner()?;
         Ok(Incoming {
             path: self.path.clone(),
@@ -144,7 +144,7 @@ pub struct Incoming {
 }
 
 impl Stream for Incoming {
-    type Item = tokio::io::Result<Connection>;
+    type Item = std::io::Result<Connection>;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.inner.pipe.get_ref().connect() {
