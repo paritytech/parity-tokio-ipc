@@ -7,7 +7,8 @@ async fn run_server(path: String) {
 	let mut endpoint = Endpoint::new(path);
 	endpoint.set_security_attributes(SecurityAttributes::allow_everyone_create().unwrap());
 
-	let mut incoming = endpoint.incoming().expect("failed to open new socket");
+	let incoming = endpoint.incoming().expect("failed to open new socket");
+	futures::pin_mut!(incoming);
 
 	while let Some(result) = incoming.next().await
 	{

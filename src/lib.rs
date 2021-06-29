@@ -64,7 +64,8 @@ mod tests {
 				.set_mode(0o777)
 				.unwrap()
 		);
-		let mut incoming = endpoint.incoming().expect("failed to open up a new socket");
+		let incoming = endpoint.incoming().expect("failed to open up a new socket");
+		futures::pin_mut!(incoming);
 
 		while let Some(result) = incoming.next().await {
 			match result {
