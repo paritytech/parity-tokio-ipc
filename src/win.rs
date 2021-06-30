@@ -1,4 +1,4 @@
-use winapi::shared::winerror::ERROR_SUCCESS;
+use winapi::shared::winerror::{ERROR_PIPE_BUSY, ERROR_SUCCESS};
 use winapi::um::accctrl::*;
 use winapi::um::aclapi::*;
 use winapi::um::minwinbase::{LPTR, PSECURITY_ATTRIBUTES, SECURITY_ATTRIBUTES};
@@ -87,7 +87,9 @@ impl Endpoint {
     pub async fn connect<P: AsRef<Path>>(path: P) -> io::Result<Connection> {
         let path = path.as_ref();
 
-        let mut duration = Duration::new(0, 0);
+        // There is not async equivalent of waiting for a named pipe in Windows,
+        // so we keep trying or sleeping for a bit, until we hit a timeout
+        let attempt_start = Instant::now();
         let client = loop {
             match named_pipe::ClientOptions::new()
                 .read(true)
@@ -95,20 +97,16 @@ impl Endpoint {
                 .open(path)
             {
                 Ok(client) => break client,
-                Err(e)
-                    if e.raw_os_error()
-                        == Some(winapi::shared::winerror::ERROR_PIPE_BUSY as i32) =>
-                {
-                    if duration >= PIPE_AVAILABILITY_TIMEOUT {
+                Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => {
+                    if attempt_start.elapsed() < PIPE_AVAILABILITY_TIMEOUT {
+                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        continue;
+                    } else {
                         return Err(e);
                     }
                 }
                 Err(e) => return Err(e),
             }
-
-            let now = Instant::now();
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            duration += now.elapsed();
         };
 
         Ok(Connection::wrap(NamedPipe::Client(client)))
