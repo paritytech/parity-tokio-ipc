@@ -61,6 +61,8 @@ impl Endpoint {
                 .reject_remote_clients(true)
                 .access_inbound(true)
                 .access_outbound(true)
+                .in_buffer_size(65536)
+                .out_buffer_size(65536)
                 .create_with_security_attributes_raw(
                     &self.path,
                     self.security_attributes.as_ptr() as *mut libc::c_void,
