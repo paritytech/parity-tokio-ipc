@@ -2,12 +2,11 @@ use libc::chmod;
 use std::ffi::CString;
 use std::io::{self, Error};
 use futures::Stream;
-use tokio::prelude::*;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::mem::MaybeUninit;
 
 /// Socket permissions and ownership on UNIX
 pub struct SecurityAttributes {
@@ -68,7 +67,7 @@ pub struct Endpoint {
 
 impl Endpoint {
     /// Stream of incoming connections
-    pub fn incoming(self) -> io::Result<impl Stream<Item = tokio::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
+    pub fn incoming(self) -> io::Result<impl Stream<Item = std::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
         let listener = self.inner()?;
         // the call to bind in `inner()` creates the file
         // `apply_permission()` will set the file permissions.
@@ -124,7 +123,10 @@ impl Stream for Incoming {
         cx: &mut Context<'_>,
     ) -> Poll<Option<Self::Item>> {
         let this = Pin::into_inner(self);
-        Pin::new(&mut this.listener).poll_next(cx)
+        match Pin::new(&mut this.listener).poll_accept(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(result) => Poll::Ready(Some(result.map(|(stream, _addr)| stream))),
+        }
     }
 }
 
@@ -149,15 +151,11 @@ impl Connection {
 }
 
 impl AsyncRead for Connection {
-    unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [MaybeUninit<u8>]) -> bool {
-        self.inner.prepare_uninitialized_buffer(buf)
-    }
-
     fn poll_read(
         self: Pin<&mut Self>,
         ctx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         let this = Pin::into_inner(self);
         Pin::new(&mut this.inner).poll_read(ctx, buf)
     }

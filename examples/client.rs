@@ -1,7 +1,7 @@
-use tokio::{self, prelude::*};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use parity_tokio_ipc::Endpoint;
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
 	let path = std::env::args().nth(1).expect("Run it with server path to connect as argument");
 
@@ -19,6 +19,6 @@ async fn main() {
 			break;
 		}
 
-		tokio::time::delay_for(std::time::Duration::from_secs(2)).await;
+		tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 	}
 }

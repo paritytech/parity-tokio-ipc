@@ -1,9 +1,5 @@
 use futures::StreamExt as _;
-use tokio::{
-	prelude::*,
-	self,
-	io::split,
-};
+use tokio::io::{split, AsyncReadExt, AsyncWriteExt};
 
 use parity_tokio_ipc::{Endpoint, SecurityAttributes};
 
@@ -11,7 +7,8 @@ async fn run_server(path: String) {
 	let mut endpoint = Endpoint::new(path);
 	endpoint.set_security_attributes(SecurityAttributes::allow_everyone_create().unwrap());
 
-	let mut incoming = endpoint.incoming().expect("failed to open new socket");
+	let incoming = endpoint.incoming().expect("failed to open new socket");
+	futures::pin_mut!(incoming);
 
 	while let Some(result) = incoming.next().await
 	{
@@ -40,7 +37,7 @@ async fn run_server(path: String) {
 	};
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
 	let path = std::env::args().nth(1).expect("Run it with server path as argument");
 	run_server(path).await
