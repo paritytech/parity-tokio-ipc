@@ -1,6 +1,6 @@
 # parity-tokio-ipc
 
-[![Build Status](https://travis-ci.org/NikVolf/parity-tokio-ipc.svg?branch=master)](https://travis-ci.org/NikVolf/parity-tokio-ipc)
+[![CI](https://github.com/paritytech/parity-tokio-ipc/actions/workflows/ci.yml/badge.svg)](https://github.com/paritytech/parity-tokio-ipc/actions/workflows/ci.yml)
 [![Documentation](https://docs.rs/parity-tokio-ipc/badge.svg)](https://docs.rs/parity-tokio-ipc)
 
 This crate abstracts interprocess transport for UNIX/Windows.
