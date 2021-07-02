@@ -4,6 +4,18 @@
 #![warn(missing_docs)]
 //#![deny(rust_2018_idioms)]
 
+// Use this directly once Rust 1.54 is stabilized; for some reason going
+// indirectly through a macro is okay.
+// See https://github.com/rust-lang/rust/issues/78835
+macro_rules! doc_comment {
+    ($x:expr) => {
+        #[doc = $x]
+        extern {}
+    };
+}
+
+doc_comment!(include_str!("../README.md"));
+
 #[cfg(windows)]
 mod win;
 #[cfg(not(windows))]
