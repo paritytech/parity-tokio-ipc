@@ -1,21 +1,34 @@
 # parity-tokio-ipc
 
-[![Build Status](https://travis-ci.org/NikVolf/parity-tokio-ipc.svg?branch=master)](https://travis-ci.org/NikVolf/parity-tokio-ipc)
+[![CI](https://github.com/paritytech/parity-tokio-ipc/actions/workflows/ci.yml/badge.svg)](https://github.com/paritytech/parity-tokio-ipc/actions/workflows/ci.yml)
+[![Documentation](https://docs.rs/parity-tokio-ipc/badge.svg)](https://docs.rs/parity-tokio-ipc)
 
-[Documentation](https://nikvolf.github.io/parity-tokio-ipc)
+This crate abstracts interprocess transport for UNIX/Windows.
 
-This crate abstracts interprocess transport for UNIX/Windows. On UNIX it utilizes unix sockets (`tokio_uds` crate) and named pipe on windows (experimental `tokio-named-pipes` crate).
+It utilizes unix sockets on UNIX (via `tokio::net::UnixStream`) and named pipes on windows (via `tokio::net::windows::named_pipe` module).
 
 Endpoint is transport-agnostic interface for incoming connections:
 ```rust
-  let endpoint = Endpoint::new(endpoint_addr, handle).unwrap();
-  endpoint.incoming().for_each(|_| println!("Connection received!"));
-```
+use parity_tokio_ipc::Endpoint;
+use futures::stream::StreamExt;
 
-And IpcStream is transport-agnostic io:
-```rust
-  let endpoint = Endpoint::new(endpoint_addr, handle).unwrap();
-  endpoint.incoming().for_each(|(ipc_stream: IpcStream, _)| io::write_all(ipc_stream, b"Hello!"));
+// For testing purposes only - instead, use a path to an actual socket or a pipe
+let addr = parity_tokio_ipc::dummy_endpoint();
+
+let server = async move {
+    Endpoint::new(addr)
+        .incoming()
+        .expect("Couldn't set up server")
+        .for_each(|conn| async {
+            match conn {
+                Ok(stream) => println!("Got connection!"),
+                Err(e) => eprintln!("Error when receiving connection: {:?}", e),
+            }
+        });
+};
+
+let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+rt.block_on(server);
 ```
 
 
