@@ -10,6 +10,7 @@ homepage = "https://github.com/paritytech/parity-tokio-ipc"
 description = """
 Interprocess communication library for tokio.
 """
+include = ["src/**/*", "LICENSE-*", "README.md"]
 
 [dependencies]
 futures = "0.3"
