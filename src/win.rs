@@ -73,7 +73,7 @@ impl Endpoint {
                 .out_buffer_size(65536)
                 .create_with_security_attributes_raw(
                     &self.path,
-                    self.security_attributes.as_ptr() as *mut libc::c_void,
+                    self.security_attributes.as_ptr().cast::<libc::c_void>(),
                 )
         }?;
         self.created_listener = true;
@@ -256,7 +256,7 @@ impl Sid {
         let result = unsafe {
             #[allow(const_item_mutation)]
             AllocateAndInitializeSid(
-                SECURITY_WORLD_SID_AUTHORITY.as_mut_ptr() as *mut _,
+                SECURITY_WORLD_SID_AUTHORITY.as_mut_ptr().cast(),
                 1,
                 SECURITY_WORLD_RID,
                 0,
@@ -302,7 +302,7 @@ impl<'a> AceWithSid<'a> {
         let mut explicit_access = unsafe { mem::zeroed::<EXPLICIT_ACCESS_W>() };
         explicit_access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
         explicit_access.Trustee.TrusteeType = trustee_type;
-        explicit_access.Trustee.ptstrName = unsafe { sid.as_ptr() as *mut _ };
+        explicit_access.Trustee.ptstrName = unsafe { sid.as_ptr().cast() };
 
         AceWithSid {
             explicit_access,
@@ -340,7 +340,7 @@ impl Acl {
         let result = unsafe {
             SetEntriesInAclW(
                 entries.len() as u32,
-                entries.as_mut_ptr() as *mut _,
+                entries.as_mut_ptr().cast(),
                 ptr::null_mut(),
                 &mut acl_ptr,
             )
@@ -361,7 +361,7 @@ impl Acl {
 impl Drop for Acl {
     fn drop(&mut self) {
         if !self.acl_ptr.is_null() {
-            unsafe { LocalFree(self.acl_ptr as *mut _) };
+            unsafe { LocalFree(self.acl_ptr.cast()) };
         }
     }
 }
