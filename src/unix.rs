@@ -17,20 +17,20 @@ pub struct SecurityAttributes {
 impl SecurityAttributes {
     /// New default security attributes. These only allow access by the
     /// process’s own user and the system administrator.
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         SecurityAttributes {
             mode: Some(0o600)
         }
     }
 
     /// New security attributes that allow everyone to connect.
-    pub fn allow_everyone_connect(mut self) -> io::Result<Self> {
+    pub const fn allow_everyone_connect(mut self) -> io::Result<Self> {
         self.mode = Some(0o666);
         Ok(self)
     }
 
     /// Set a custom permission on the socket
-    pub fn set_mode(mut self, mode: u16) -> io::Result<Self> {
+    pub const fn set_mode(mut self, mode: u16) -> io::Result<Self> {
         self.mode = Some(mode);
         Ok(self)
     }
@@ -39,10 +39,8 @@ impl SecurityAttributes {
     ///
     /// This does not work on unix, where it is equivalent to
     /// [`SecurityAttributes::allow_everyone_connect`].
-    pub fn allow_everyone_create() -> io::Result<Self> {
-        Ok(SecurityAttributes {
-            mode: None
-        })
+    pub const fn allow_everyone_create() -> io::Result<Self> {
+        Ok(SecurityAttributes { mode: None })
     }
 
     /// called in unix, after server socket has been created
@@ -99,7 +97,7 @@ impl Endpoint {
     }
 
     /// New IPC endpoint at the given path
-    pub fn new(path: String) -> Self {
+    pub const fn new(path: String) -> Self {
         Endpoint {
             path,
             security_attributes: SecurityAttributes::empty(),
@@ -145,7 +143,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    fn wrap(stream: UnixStream) -> Self {
+    const fn wrap(stream: UnixStream) -> Self {
         Self { inner: stream }
     }
 }

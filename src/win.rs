@@ -113,7 +113,7 @@ impl Endpoint {
     }
 
     /// New IPC endpoint at the given path
-    pub fn new(path: String) -> Self {
+    pub const fn new(path: String) -> Self {
         Endpoint {
             path,
             security_attributes: SecurityAttributes::empty(),
@@ -129,7 +129,7 @@ pub struct Connection {
 
 impl Connection {
     /// Wraps an existing named pipe
-    fn wrap(pipe: NamedPipe) -> Self {
+    const fn wrap(pipe: NamedPipe) -> Self {
         Self { inner: pipe }
     }
 }
@@ -201,7 +201,7 @@ pub const DEFAULT_SECURITY_ATTRIBUTES: SecurityAttributes = SecurityAttributes {
 
 impl SecurityAttributes {
     /// New default security attributes.
-    pub fn empty() -> SecurityAttributes {
+    pub const fn empty() -> Self {
         DEFAULT_SECURITY_ATTRIBUTES
     }
 
@@ -214,7 +214,7 @@ impl SecurityAttributes {
     }
 
     /// Set a custom permission on the socket
-    pub fn set_mode(self, _mode: u32) -> io::Result<Self> {
+    pub const fn set_mode(self, _mode: u32) -> io::Result<SecurityAttributes> {
         // for now, does nothing.
         Ok(self)
     }
@@ -269,7 +269,7 @@ impl Sid {
     }
 
     // Unsafe - the returned pointer is only valid for the lifetime of self.
-    unsafe fn as_ptr(&self) -> PSID {
+    const unsafe fn as_ptr(&self) -> PSID {
         self.sid_ptr
     }
 }
@@ -345,7 +345,7 @@ impl Acl {
         Ok(Acl { acl_ptr })
     }
 
-    unsafe fn as_ptr(&self) -> PACL {
+    const unsafe fn as_ptr(&self) -> PACL {
         self.acl_ptr
     }
 }
@@ -391,7 +391,7 @@ impl SecurityDescriptor {
         Ok(())
     }
 
-    unsafe fn as_ptr(&self) -> PSECURITY_DESCRIPTOR {
+    const unsafe fn as_ptr(&self) -> PSECURITY_DESCRIPTOR {
         self.descriptor_ptr
     }
 }
