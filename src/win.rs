@@ -214,7 +214,7 @@ impl SecurityAttributes {
     }
 
     /// New default security attributes that allow everyone to connect.
-    pub fn allow_everyone_connect(&self) -> io::Result<SecurityAttributes> {
+    pub fn allow_everyone_connect() -> io::Result<SecurityAttributes> {
         let attributes = Some(InnerAttributes::allow_everyone(
             GENERIC_READ | FILE_WRITE_DATA,
         )?);
@@ -471,8 +471,7 @@ mod test {
 
     #[test]
     fn test_allow_eveyone_read_write() {
-        SecurityAttributes::empty()
-            .allow_everyone_connect()
+        SecurityAttributes::allow_everyone_connect()
             .expect("failed to create security attributes that allow everyone to read and write to/from a pipe");
     }
 }
