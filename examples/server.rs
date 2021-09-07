@@ -20,12 +20,12 @@ async fn run_server(path: String) {
 					loop {
 						let mut buf = [0u8; 4];
 						let pong_buf = b"pong";
-						if let Err(_) = reader.read_exact(&mut buf).await {
-							println!("Closing socket");
-							break;
-						}
-						if let Ok("ping") = std::str::from_utf8(&buf[..]) {
-							println!("RECIEVED: PING");
+                        if reader.read_exact(&mut buf).await.is_err() {
+                            println!("Closing socket");
+                            break;
+                        }
+                        if let Ok("ping") = std::str::from_utf8(&buf[..]) {
+                            println!("RECIEVED: PING");
 							writer.write_all(pong_buf).await.expect("unable to write to socket");
 							println!("SEND: PONG");
 						}
