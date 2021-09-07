@@ -1,10 +1,18 @@
 use winapi::shared::winerror::{ERROR_PIPE_BUSY, ERROR_SUCCESS};
-use winapi::um::accctrl::*;
-use winapi::um::aclapi::*;
+use winapi::um::accctrl::{
+    EXPLICIT_ACCESS_W, SET_ACCESS, TRUSTEE_IS_SID, TRUSTEE_IS_WELL_KNOWN_GROUP,
+};
+use winapi::um::aclapi::SetEntriesInAclW;
 use winapi::um::minwinbase::{LPTR, PSECURITY_ATTRIBUTES, SECURITY_ATTRIBUTES};
-use winapi::um::securitybaseapi::*;
+use winapi::um::securitybaseapi::{
+    AllocateAndInitializeSid, FreeSid, InitializeSecurityDescriptor, SetSecurityDescriptorDacl,
+};
 use winapi::um::winbase::{LocalAlloc, LocalFree};
-use winapi::um::winnt::*;
+use winapi::um::winnt::{
+    FILE_WRITE_DATA, GENERIC_READ, GENERIC_WRITE, PACL, PSECURITY_DESCRIPTOR, PSID,
+    SECURITY_DESCRIPTOR_MIN_LENGTH, SECURITY_DESCRIPTOR_REVISION, SECURITY_WORLD_RID,
+    SECURITY_WORLD_SID_AUTHORITY,
+};
 
 use futures::Stream;
 use std::io;
@@ -424,6 +432,7 @@ impl InnerAttributes {
         Ok(InnerAttributes {
             acl,
             descriptor,
+            acl,
             attrs,
         })
     }

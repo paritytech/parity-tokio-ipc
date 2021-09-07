@@ -1,17 +1,17 @@
+use futures::Stream;
 use libc::chmod;
 use std::ffi::CString;
 use std::io::{self, Error};
-use futures::Stream;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::net::{UnixListener, UnixStream};
 
 /// Socket permissions and ownership on UNIX
 pub struct SecurityAttributes {
     // read/write permissions for owner, group and others in unix octal.
-    mode: Option<u16>
+    mode: Option<u16>,
 }
 
 impl SecurityAttributes {
@@ -65,7 +65,10 @@ pub struct Endpoint {
 
 impl Endpoint {
     /// Stream of incoming connections
-    pub fn incoming(self) -> io::Result<impl Stream<Item = std::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
+    pub fn incoming(
+        self,
+    ) -> io::Result<impl Stream<Item = std::io::Result<impl AsyncRead + AsyncWrite>> + 'static>
+    {
         let listener = self.inner()?;
         // the call to bind in `inner()` creates the file
         // `apply_permission()` will set the file permissions.
@@ -116,10 +119,7 @@ struct Incoming {
 impl Stream for Incoming {
     type Item = io::Result<UnixStream>;
 
-    fn poll_next(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = Pin::into_inner(self);
         match Pin::new(&mut this.listener).poll_accept(cx) {
             Poll::Pending => Poll::Pending,
