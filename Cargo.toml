@@ -1,7 +1,7 @@
 [package]
 name = "parity-tokio-ipc"
 version = "0.9.0"
-edition = "2018"
+edition = "2021"
 authors = ["NikVolf <nikvolf@gmail.com>"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
