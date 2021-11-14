@@ -1,36 +1,36 @@
+use futures::Stream;
 use libc::chmod;
 use std::ffi::CString;
 use std::io::{self, Error};
-use futures::Stream;
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::net::{UnixListener, UnixStream};
 
 /// Socket permissions and ownership on UNIX
 pub struct SecurityAttributes {
     // read/write permissions for owner, group and others in unix octal.
-    mode: Option<u16>
+    mode: Option<u16>,
 }
 
 impl SecurityAttributes {
     /// New default security attributes. These only allow access by the
     /// process’s own user and the system administrator.
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         SecurityAttributes {
             mode: Some(0o600)
         }
     }
 
     /// New security attributes that allow everyone to connect.
-    pub fn allow_everyone_connect(mut self) -> io::Result<Self> {
+    pub const fn allow_everyone_connect(mut self) -> io::Result<Self> {
         self.mode = Some(0o666);
         Ok(self)
     }
 
     /// Set a custom permission on the socket
-    pub fn set_mode(mut self, mode: u16) -> io::Result<Self> {
+    pub const fn set_mode(mut self, mode: u16) -> io::Result<Self> {
         self.mode = Some(mode);
         Ok(self)
     }
@@ -39,10 +39,8 @@ impl SecurityAttributes {
     ///
     /// This does not work on unix, where it is equivalent to
     /// [`SecurityAttributes::allow_everyone_connect`].
-    pub fn allow_everyone_create() -> io::Result<Self> {
-        Ok(SecurityAttributes {
-            mode: None
-        })
+    pub const fn allow_everyone_create() -> io::Result<Self> {
+        Ok(SecurityAttributes { mode: None })
     }
 
     /// called in unix, after server socket has been created
@@ -67,7 +65,10 @@ pub struct Endpoint {
 
 impl Endpoint {
     /// Stream of incoming connections
-    pub fn incoming(self) -> io::Result<impl Stream<Item = std::io::Result<impl AsyncRead + AsyncWrite>> + 'static> {
+    pub fn incoming(
+        self,
+    ) -> io::Result<impl Stream<Item = std::io::Result<impl AsyncRead + AsyncWrite>> + 'static>
+    {
         let listener = self.inner()?;
         // the call to bind in `inner()` creates the file
         // `apply_permission()` will set the file permissions.
@@ -99,7 +100,7 @@ impl Endpoint {
     }
 
     /// New IPC endpoint at the given path
-    pub fn new(path: String) -> Self {
+    pub const fn new(path: String) -> Self {
         Endpoint {
             path,
             security_attributes: SecurityAttributes::empty(),
@@ -118,10 +119,7 @@ struct Incoming {
 impl Stream for Incoming {
     type Item = io::Result<UnixStream>;
 
-    fn poll_next(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = Pin::into_inner(self);
         match Pin::new(&mut this.listener).poll_accept(cx) {
             Poll::Pending => Poll::Pending,
@@ -145,7 +143,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    fn wrap(stream: UnixStream) -> Self {
+    const fn wrap(stream: UnixStream) -> Self {
         Self { inner: stream }
     }
 }

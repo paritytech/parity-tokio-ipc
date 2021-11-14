@@ -1,10 +1,18 @@
 use winapi::shared::winerror::{ERROR_PIPE_BUSY, ERROR_SUCCESS};
-use winapi::um::accctrl::*;
-use winapi::um::aclapi::*;
+use winapi::um::accctrl::{
+    EXPLICIT_ACCESS_W, SET_ACCESS, TRUSTEE_IS_SID, TRUSTEE_IS_WELL_KNOWN_GROUP,
+};
+use winapi::um::aclapi::SetEntriesInAclW;
 use winapi::um::minwinbase::{LPTR, PSECURITY_ATTRIBUTES, SECURITY_ATTRIBUTES};
-use winapi::um::securitybaseapi::*;
+use winapi::um::securitybaseapi::{
+    AllocateAndInitializeSid, FreeSid, InitializeSecurityDescriptor, SetSecurityDescriptorDacl,
+};
 use winapi::um::winbase::{LocalAlloc, LocalFree};
-use winapi::um::winnt::*;
+use winapi::um::winnt::{
+    FILE_WRITE_DATA, GENERIC_READ, GENERIC_WRITE, PACL, PSECURITY_DESCRIPTOR, PSID,
+    SECURITY_DESCRIPTOR_MIN_LENGTH, SECURITY_DESCRIPTOR_REVISION, SECURITY_WORLD_RID,
+    SECURITY_WORLD_SID_AUTHORITY,
+};
 
 use futures::Stream;
 use std::io;
@@ -42,7 +50,7 @@ impl Endpoint {
 
         let stream =
             futures::stream::try_unfold((pipe, self), |(listener, mut endpoint)| async move {
-                let () = listener.connect().await?;
+                listener.connect().await?;
 
                 let new_listener = endpoint.create_listener()?;
 
@@ -65,7 +73,7 @@ impl Endpoint {
                 .out_buffer_size(65536)
                 .create_with_security_attributes_raw(
                     &self.path,
-                    self.security_attributes.as_ptr() as *mut libc::c_void,
+                    self.security_attributes.as_ptr().cast::<libc::c_void>(),
                 )
         }?;
         self.created_listener = true;
@@ -113,7 +121,7 @@ impl Endpoint {
     }
 
     /// New IPC endpoint at the given path
-    pub fn new(path: String) -> Self {
+    pub const fn new(path: String) -> Self {
         Endpoint {
             path,
             security_attributes: SecurityAttributes::empty(),
@@ -129,7 +137,7 @@ pub struct Connection {
 
 impl Connection {
     /// Wraps an existing named pipe
-    fn wrap(pipe: NamedPipe) -> Self {
+    const fn wrap(pipe: NamedPipe) -> Self {
         Self { inner: pipe }
     }
 }
@@ -201,12 +209,12 @@ pub const DEFAULT_SECURITY_ATTRIBUTES: SecurityAttributes = SecurityAttributes {
 
 impl SecurityAttributes {
     /// New default security attributes.
-    pub fn empty() -> SecurityAttributes {
+    pub const fn empty() -> Self {
         DEFAULT_SECURITY_ATTRIBUTES
     }
 
     /// New default security attributes that allow everyone to connect.
-    pub fn allow_everyone_connect(&self) -> io::Result<SecurityAttributes> {
+    pub fn allow_everyone_connect() -> io::Result<SecurityAttributes> {
         let attributes = Some(InnerAttributes::allow_everyone(
             GENERIC_READ | FILE_WRITE_DATA,
         )?);
@@ -214,7 +222,7 @@ impl SecurityAttributes {
     }
 
     /// Set a custom permission on the socket
-    pub fn set_mode(self, _mode: u32) -> io::Result<Self> {
+    pub const fn set_mode(self, _mode: u32) -> io::Result<SecurityAttributes> {
         // for now, does nothing.
         Ok(self)
     }
@@ -248,7 +256,7 @@ impl Sid {
         let result = unsafe {
             #[allow(const_item_mutation)]
             AllocateAndInitializeSid(
-                SECURITY_WORLD_SID_AUTHORITY.as_mut_ptr() as *mut _,
+                SECURITY_WORLD_SID_AUTHORITY.as_mut_ptr().cast(),
                 1,
                 SECURITY_WORLD_RID,
                 0,
@@ -269,7 +277,7 @@ impl Sid {
     }
 
     // Unsafe - the returned pointer is only valid for the lifetime of self.
-    unsafe fn as_ptr(&self) -> PSID {
+    const unsafe fn as_ptr(&self) -> PSID {
         self.sid_ptr
     }
 }
@@ -294,7 +302,7 @@ impl<'a> AceWithSid<'a> {
         let mut explicit_access = unsafe { mem::zeroed::<EXPLICIT_ACCESS_W>() };
         explicit_access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
         explicit_access.Trustee.TrusteeType = trustee_type;
-        explicit_access.Trustee.ptstrName = unsafe { sid.as_ptr() as *mut _ };
+        explicit_access.Trustee.ptstrName = unsafe { sid.as_ptr().cast() };
 
         AceWithSid {
             explicit_access,
@@ -332,7 +340,7 @@ impl Acl {
         let result = unsafe {
             SetEntriesInAclW(
                 entries.len() as u32,
-                entries.as_mut_ptr() as *mut _,
+                entries.as_mut_ptr().cast(),
                 ptr::null_mut(),
                 &mut acl_ptr,
             )
@@ -345,7 +353,7 @@ impl Acl {
         Ok(Acl { acl_ptr })
     }
 
-    unsafe fn as_ptr(&self) -> PACL {
+    const unsafe fn as_ptr(&self) -> PACL {
         self.acl_ptr
     }
 }
@@ -353,7 +361,7 @@ impl Acl {
 impl Drop for Acl {
     fn drop(&mut self) {
         if !self.acl_ptr.is_null() {
-            unsafe { LocalFree(self.acl_ptr as *mut _) };
+            unsafe { LocalFree(self.acl_ptr.cast()) };
         }
     }
 }
@@ -391,7 +399,7 @@ impl SecurityDescriptor {
         Ok(())
     }
 
-    unsafe fn as_ptr(&self) -> PSECURITY_DESCRIPTOR {
+    const unsafe fn as_ptr(&self) -> PSECURITY_DESCRIPTOR {
         self.descriptor_ptr
     }
 }
@@ -422,8 +430,8 @@ impl InnerAttributes {
         let acl = Acl::empty().expect("this should never fail");
 
         Ok(InnerAttributes {
-            acl,
             descriptor,
+            acl,
             attrs,
         })
     }
@@ -462,8 +470,7 @@ mod test {
 
     #[test]
     fn test_allow_eveyone_read_write() {
-        SecurityAttributes::empty()
-            .allow_everyone_connect()
+        SecurityAttributes::allow_everyone_connect()
             .expect("failed to create security attributes that allow everyone to read and write to/from a pipe");
     }
 }
