@@ -1,12 +1,3 @@
-use winapi::shared::winerror::{ERROR_PIPE_BUSY, ERROR_SUCCESS};
-use winapi::um::accctrl::*;
-use winapi::um::aclapi::*;
-use winapi::um::minwinbase::{LPTR, PSECURITY_ATTRIBUTES, SECURITY_ATTRIBUTES};
-use winapi::um::securitybaseapi::*;
-use winapi::um::winbase::{LocalAlloc, LocalFree};
-use winapi::um::winnt::*;
-
-use futures::Stream;
 use std::io;
 use std::marker;
 use std::mem;
@@ -15,9 +6,16 @@ use std::pin::Pin;
 use std::ptr;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncRead, AsyncWrite};
 
+use futures::Stream;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::windows::named_pipe;
+use windows_sys::Win32::Foundation::{ERROR_PIPE_BUSY, ERROR_SUCCESS, PSID};
+use windows_sys::Win32::Security::Authorization::*;
+use windows_sys::Win32::Security::*;
+use windows_sys::Win32::Storage::FileSystem::FILE_WRITE_DATA;
+use windows_sys::Win32::System::Memory::*;
+use windows_sys::Win32::System::SystemServices::*;
 
 enum NamedPipe {
     Server(named_pipe::NamedPipeServer),
@@ -228,7 +226,7 @@ impl SecurityAttributes {
     }
 
     /// Return raw handle of security attributes.
-    pub(crate) unsafe fn as_ptr(&mut self) -> PSECURITY_ATTRIBUTES {
+    pub(crate) unsafe fn as_ptr(&mut self) -> *const SECURITY_ATTRIBUTES {
         match self.attributes.as_mut() {
             Some(attributes) => attributes.as_ptr(),
             None => ptr::null_mut(),
@@ -245,12 +243,14 @@ struct Sid {
 impl Sid {
     fn everyone_sid() -> io::Result<Sid> {
         let mut sid_ptr = ptr::null_mut();
+        let world_sid_authority = SID_IDENTIFIER_AUTHORITY {
+            Value: [0, 0, 0, 0, 0, 1],
+        };
         let result = unsafe {
-            #[allow(const_item_mutation)]
             AllocateAndInitializeSid(
-                SECURITY_WORLD_SID_AUTHORITY.as_mut_ptr() as *mut _,
+                &world_sid_authority,
                 1,
-                SECURITY_WORLD_RID,
+                SECURITY_WORLD_RID as _,
                 0,
                 0,
                 0,
@@ -290,7 +290,7 @@ struct AceWithSid<'a> {
 }
 
 impl<'a> AceWithSid<'a> {
-    fn new(sid: &'a Sid, trustee_type: u32) -> AceWithSid<'a> {
+    fn new(sid: &'a Sid, trustee_type: TRUSTEE_TYPE) -> AceWithSid<'a> {
         let mut explicit_access = unsafe { mem::zeroed::<EXPLICIT_ACCESS_W>() };
         explicit_access.Trustee.TrusteeForm = TRUSTEE_IS_SID;
         explicit_access.Trustee.TrusteeType = trustee_type;
@@ -302,7 +302,7 @@ impl<'a> AceWithSid<'a> {
         }
     }
 
-    fn set_access_mode(&mut self, access_mode: u32) -> &mut Self {
+    fn set_access_mode(&mut self, access_mode: ACCESS_MODE) -> &mut Self {
         self.explicit_access.grfAccessMode = access_mode;
         self
     }
@@ -319,7 +319,7 @@ impl<'a> AceWithSid<'a> {
 }
 
 struct Acl {
-    acl_ptr: PACL,
+    acl_ptr: *const ACL,
 }
 
 impl Acl {
@@ -345,7 +345,7 @@ impl Acl {
         Ok(Acl { acl_ptr })
     }
 
-    unsafe fn as_ptr(&self) -> PACL {
+    unsafe fn as_ptr(&self) -> *const ACL {
         self.acl_ptr
     }
 }
@@ -353,7 +353,7 @@ impl Acl {
 impl Drop for Acl {
     fn drop(&mut self) {
         if !self.acl_ptr.is_null() {
-            unsafe { LocalFree(self.acl_ptr as *mut _) };
+            unsafe { LocalFree(self.acl_ptr as isize) };
         }
     }
 }
@@ -364,7 +364,8 @@ struct SecurityDescriptor {
 
 impl SecurityDescriptor {
     fn new() -> io::Result<Self> {
-        let descriptor_ptr = unsafe { LocalAlloc(LPTR, SECURITY_DESCRIPTOR_MIN_LENGTH) };
+        let descriptor_ptr = unsafe { LocalAlloc(LPTR, mem::size_of::<SECURITY_DESCRIPTOR>()) }
+            as PSECURITY_DESCRIPTOR;
         if descriptor_ptr.is_null() {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
@@ -399,7 +400,7 @@ impl SecurityDescriptor {
 impl Drop for SecurityDescriptor {
     fn drop(&mut self) {
         if !self.descriptor_ptr.is_null() {
-            unsafe { LocalFree(self.descriptor_ptr) };
+            unsafe { LocalFree(self.descriptor_ptr as isize) };
             self.descriptor_ptr = ptr::null_mut();
         }
     }
@@ -445,7 +446,7 @@ impl InnerAttributes {
         Ok(attributes)
     }
 
-    unsafe fn as_ptr(&mut self) -> PSECURITY_ATTRIBUTES {
+    unsafe fn as_ptr(&mut self) -> *const SECURITY_ATTRIBUTES {
         &mut self.attrs as *mut _
     }
 }
